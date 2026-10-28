@@ -1,218 +1,58 @@
-
-
-<a name="readme-top"></a>
-
-
-[![Contributors][contributors-shield]][contributors-url]   [![Forks][forks-shield]][forks-url]   [![Stargazers][stars-shield]][stars-url] [![Issues][issues-shield]][issues-url]  [![MIT License][license-shield]][license-url]
-
-
-
-<!-- PROJECT LOGO -->
-<br />
 <div align="center">
-  <a href="https://github.com/algertc/kleopatra4mac">
-    <img src="https://github.com/algertc/homebrew-kleopatra4mac/raw/main/images/kleo2_revised.png" alt="Logo" width="1000" height="210">
-  </a>
+  <img src="images/kleo2_revised.png" alt="Kleopatra for macOS" width="800">
 
-  <p align="center">
-      <p align="center">
-    <span><strong>KDE Kleopatra GPG Utility for Mac</strong></span>
-    <br />
-    <a href="https://github.com/algertc/kleopatra4mac/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/algertc/kleopatra4mac/pulls">Contribute</a>
-  </p>
+  <p><strong>KDE Kleopatra for macOS, built with Homebrew</strong></p>
 </div>
 
+Kleopatra is KDE's certificate manager and graphical front end for GnuPG: create and manage OpenPGP and S/MIME keys, encrypt, decrypt, sign and verify files and text.
 
+This tap builds **Kleopatra 26.08.2** on **Qt 6** and **KDE Frameworks 6.31** from source, natively for your Mac's architecture (tested on Apple Silicon; Intel should work but is untested), and adds patches that make it look and behave like a Mac app.
 
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-    </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-    <li><a href="#acknowledgments">Acknowledgments</a></li>
-  </ol>
-</details>
+> This is an updated fork of [algertc/homebrew-kleopatra4mac](https://github.com/algertc/homebrew-kleopatra4mac), which packaged Kleopatra 22.07 on Qt 5. All credit for the original port goes there.
 
+## Install
 
-<br></br>
-<br></br>
+```sh
+brew tap giorgiobrullo/kleopatra4mac
+brew install kleopatra
+```
 
-<!-- ABOUT THE PROJECT -->
-## About The Project
+The formula is also available from [giorgiobrullo/homebrew-tap](https://github.com/giorgiobrullo/homebrew-tap) as `giorgiobrullo/tap/kleopatra`.
 
-![WorkFlow](https://raw.githubusercontent.com/algertc/kleopatra4mac/main/images/render.png "Workflow")
+The first install compiles Kleopatra together with the KDE libraries it needs that Homebrew does not ship, so it takes a while (around half an hour on a recent Mac).
 
-<h4>Kleopatra4Mac is an all-in-one prebuilt port of KDE's GPG utility for use on MacOS. Kleopatra is a certificate manager and a universal crypto GUI. It supports managing X.509 and OpenPGP certificates in the GpgSM keybox and retrieving certificates from LDAP servers.
+If you had the old Qt 5 formula installed, remove it first with `brew uninstall kleopatra`. D-Bus is no longer needed, so `brew services start dbus` is not part of the setup any more.
 
-<strong>Features:
-* Integrated Notepad
-* Smartcards
-* Simplified Certificate Management
-* Contacts
+## After installing
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+Link the app into `/Applications` so it shows up in Launchpad and Spotlight:
 
+```sh
+ln -sfn "$(brew --prefix kleopatra)/Applications/KDE/kleopatra.app" /Applications/Kleopatra.app
+```
 
+To type passphrases into a native macOS dialog, make GnuPG use `pinentry-mac` (installed as a dependency):
 
+```sh
+echo "pinentry-program $(brew --prefix pinentry-mac)/bin/pinentry-mac" >> ~/.gnupg/gpg-agent.conf
+gpgconf --kill gpg-agent
+```
 
-<!-- GETTING STARTED -->
-## Getting Started
+## What the macOS patches change
 
+The patches in [`patches/`](patches) only affect macOS builds and are applied on top of the upstream release:
 
-### Prerequisites
+- **Window and toolbar**: unified title bar and toolbar, AppKit-sized labels, SF Symbols instead of KDE's Breeze icons, Finder-style tab bar, alternating row colors.
+- **Menus**: no Settings menu (Settings…, keyboard shortcuts and language live in the application menu, toolbar options in View), ⌘, for Settings, native pop-up and context menus, the standard macOS About panel.
+- **Dialogs**: macOS button order with the default button on the right, no icons on push buttons, native pull-down buttons and text fields, a toolbar customization sheet.
+- **Colors**: light and dark mode follow the system, and KDE's positive/negative highlights use Apple's system colors.
+- **Fixes**: proper bundle identifier and version, so macOS can remember the app's permissions; layout gaps and button spacing that only showed up with the macOS style.
 
-* [Homebrew](https://brew.sh/)
-  ```sh
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  ```
+## Credits
 
-* [GnuPG/GPG](https://www.gnupg.org/)
-  ```sh
-  brew install gnupg
-  ```
-  **Must run gpg at least once to generate configs
+- [Kleopatra](https://apps.kde.org/kleopatra/) by the KDE and Gpg4win developers.
+- [kleopatra4mac](https://github.com/algertc/homebrew-kleopatra4mac) by algertc, the original Homebrew port this fork builds on.
 
-* [GnuPG Pinentry](https://www.gnupg.org/related_software/pinentry/index.html)
-  ```sh
-  brew install pinentry-mac
-  ```
-
-## Installation
-* ### <strong>Homebrew Installation</strong>
-
-1. Brew Install
-
-   ```sh
-   brew install algertc/kleopatra4mac/kleopatra
-   ```
-
-  * ### Build From Source (Advanced)
-2. Check the [Brew "Bottle" Documentation](https://docs.brew.sh/Bottles) for Full Explanation
-
-3.  To Rebuild From [*Kleopatra.rb*](https://github.com/algertc/homebrew-kleopatra4mac/blob/main/kleopatra.rb)  in This Repo
-
-	   ``brew install --build-from-source algertc/kleopatra4mac/kleopatra``
-4.  If  You Decide to Make Changes, You Can Create Your Own New Bottle (**Please Consider Submitting  a  Pull Request!)**
-
-	Bottles are produced by installing a formula with `brew install --build-bottle <formula>` and then bottling it with `brew bottle <formula>`
-
-Source builds apply Fusion with a Breeze Dark palette, native macOS window vibrancy,
-and the modern application icon. The formula builds compatible KF5 and GPGME
-resources within its own keg. New bottles must be generated for this revision;
-the previous precompiled bottles contain the older interface.
-
-## After Installation
-### ❗*The Following Section is For ARM/Apple Silicon. Intel Instructions Can Be Found [Here](https://github.com/algertc/homebrew-kleopatra4mac/blob/main/intel_instructions.md)* 
-
-1. Make Sure dbus is Running
-   ```sh
-   brew services start dbus
-   ```
-2. Select <strong>pinentry-mac</strong> as the Default Program
-   ```js
-   echo "pinentry-program /opt/homebrew/bin/pinentry-mac" > ~/.gnupg/gpg-agent.conf
-   killall -9 gpg-agent
-   ```
-3. If You Need to Have Kleopatra First in Your PATH, Run:
-   ```sh
-   echo 'export PATH="/opt/homebrew/opt/kleopatra/bin:$PATH"' >> ~/.zshrc
-   ```
-    ***(Note: Command here is for zshell)***
-
-4. If You Want to Add This Application to the Launchpad, Run:
-   ```sh
-   cd /Applications && unzip /opt/homebrew/opt/kleopatra/app.zip
-   ```
-
-5. Kleopatra is Keg-Only, Which Means it Was Not Symlinked Into /opt/homebrew to Prevent Conflicts With Any *GPGme* or *KDE* Libraries. If You Must Create a Symlink, Run:
-   ```sh
-   export LDFLAGS="-L/opt/homebrew/opt/kleopatra/lib"
-   export CPPFLAGS="-I/opt/homebrew/opt/kleopatra/include"
-   ```
-
-6. For compilers to find kleopatra, You May Need to Set:
-   ```sh
-   export LDFLAGS="-L/opt/homebrew/opt/kleopatra/lib"
-   export CPPFLAGS="-I/opt/homebrew/opt/kleopatra/include"
-   ```
-
-7. For pkg-config to Find Kleopatra, You May Need to Set:
-   ```sh
-   export PKG_CONFIG_PATH="/opt/homebrew/opt/kleopatra/lib/pkgconfig"
-   ```
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- ROADMAP -->
-## Roadmap
-
-- [x] Dark mode
-- [x] Universal Font
-- [ ] Fix symlink spotlight search ranking
-- [x] Beautify/Modernize UI
-	- [x] Mimic [Plasma Styling](https://kde.org/images/screenshots/kleopatra.png)
-	- [x] Transparency
-- [ ] Fix Unintended Pagination ([Issue #1](https://github.com/algertc/homebrew-kleopatra4mac/issues/1))
-- [x] Exclude Default Icon from KDE's "kiconthemes" and Point to:  [Modernized Application Icon](https://github.com/algertc/homebrew-kleopatra4mac/blob/main/images/Icon.svg)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- CONTRIBUTING -->
-## Contributing
-
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- LICENSE -->
 ## License
 
-Distributed under the GPL 2.0 License. See `LICENSE.txt` for more information.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-<!-- ACKNOWLEDGMENTS -->
-## Acknowledgments
-
-* [Vadim Panov](https://www.linkedin.com/in/vadim-panov-55a5a036)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-[contributors-shield]: https://img.shields.io/github/contributors/algertc/kleopatra4mac.svg?style=for-the-badge
-[contributors-url]: https://github.com/algertc/kleopatra4mac/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/algertc/kleopatra4mac.svg?style=for-the-badge
-[forks-url]: https://github.com/algertc/kleopatra4mac/network/members
-[stars-shield]: https://img.shields.io/github/stars/algertc/kleopatra4mac.svg?style=for-the-badge
-[stars-url]: https://github.com/algertc/kleopatra4mac/stargazers
-[issues-shield]: https://img.shields.io/github/issues/algertc/kleopatra4mac.svg?style=for-the-badge
-[issues-url]: https://github.com/algertc/kleopatra4mac/issues
-[license-shield]: https://img.shields.io/github/license/algertc/kleopatra4mac.svg?style=for-the-badge
-[license-url]: https://github.com/algertc/kleopatra4mac/blob/master/LICENSE.txt
+GPL-2.0, like Kleopatra itself. See [LICENSE.txt](LICENSE.txt).
