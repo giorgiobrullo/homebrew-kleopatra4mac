@@ -1,0 +1,1172 @@
+diff -ruN a5/src/CMakeLists.txt b5/src/CMakeLists.txt
+--- a5/src/CMakeLists.txt	2026-10-28 15:38:21
++++ b5/src/CMakeLists.txt	2026-10-28 16:16:28
+@@ -585,7 +585,7 @@
+ set_target_properties(kleopatra_bin PROPERTIES OUTPUT_NAME kleopatra)
+ if(APPLE)
+     enable_language(OBJCXX)
+-    target_sources(kleopatra_bin PRIVATE utils/macsymbolicons.mm utils/macsystemcolors.mm)
++    target_sources(kleopatra_bin PRIVATE utils/macsymbolicons.mm utils/macsystemcolors.mm utils/macaboutpanel.mm utils/macnativemenus.mm utils/mactoolbareditor.cpp)
+     target_link_libraries(kleopatra_bin "-framework AppKit")
+ endif()
+ if(APPLE)
+diff -ruN a5/src/dialogs/certificatedetailsdialog.cpp b5/src/dialogs/certificatedetailsdialog.cpp
+--- a5/src/dialogs/certificatedetailsdialog.cpp	2026-10-28 17:04:26
++++ b5/src/dialogs/certificatedetailsdialog.cpp	2026-10-28 17:04:32
+@@ -79,6 +79,15 @@
+     auto closeBtn = bbox->addButton(QDialogButtonBox::Close);
+     connect(closeBtn, &QPushButton::pressed, this, &QDialog::accept);
+     l->addWidget(bbox);
++#ifdef Q_OS_MACOS
++    // on macOS only the dismissing button is the default one; otherwise the focused action
++    // button (initially "Add User ID") would be highlighted as default
++    const auto pushButtons = findChildren<QPushButton *>();
++    for (QPushButton *button : pushButtons) {
++        button->setAutoDefault(false);
++    }
++    closeBtn->setDefault(true);
++#endif
+ 
+     connect(d->exportBtn, &QPushButton::clicked, this, [this]() {
+         d->exportClicked();
+diff -ruN a5/src/kleopatraapplication.cpp b5/src/kleopatraapplication.cpp
+--- a5/src/kleopatraapplication.cpp	2026-10-28 15:38:21
++++ b5/src/kleopatraapplication.cpp	2026-10-28 17:14:02
+@@ -16,12 +16,16 @@
+ 
+ #ifdef Q_OS_MACOS
+ #include "utils/macsymbolicons.h"
++#include "utils/macaboutpanel.h"
++#include "utils/macnativemenus.h"
+ #include "utils/macsystemcolors.h"
+ 
+ #include <QAbstractButton>
+ #include <QPainter>
+ #include <QPushButton>
+ #include <QStyleOptionButton>
++#include <QStyleOptionMenuItem>
++#include <QTranslator>
+ #include <QStyleOptionToolButton>
+ #include <QToolBar>
+ #include <QToolButton>
+@@ -339,6 +343,55 @@
+     }
+ };
+ 
++#ifdef Q_OS_MACOS
++// Qt still labels the application menu's settings item "Preferences...", which macOS calls
++// "Settings…" since macOS 13. Qt consults this context only if it has no translation of its own.
++class MacApplicationMenuTranslator : public QTranslator
++{
++public:
++    using QTranslator::QTranslator;
++
++    QString translate(const char *context, const char *sourceText, const char *, int) const override
++    {
++        if (qstrcmp(context, "MAC_APPLICATION_MENU") == 0 && qstrcmp(sourceText, "Preferences...") == 0) {
++            return QStringLiteral("Settings…");
++        }
++        return {};
++    }
++
++    bool isEmpty() const override
++    {
++        return false;
++    }
++};
++#endif
++
++#ifdef Q_OS_MACOS
++// tool buttons with a visible label outside of toolbars (e.g. the "Add" button with a menu in
++// the directory services settings) get an old square bezel from Qt's macOS style; AppKit has
++// push buttons (pull-down buttons if there is a menu) for this
++static bool isLabelledToolButton(const QWidget *widget, const QStyleOptionToolButton *option)
++{
++    return qobject_cast<const QToolButton *>(widget) && option && !qobject_cast<const QToolBar *>(widget->parentWidget()) && !option->text.isEmpty()
++        && (option->toolButtonStyle != Qt::ToolButtonIconOnly || option->icon.isNull());
++}
++
++static QStyleOptionButton pushButtonOption(const QStyleOptionToolButton &toolButton)
++{
++    QStyleOptionButton button;
++    button.QStyleOption::operator=(toolButton);
++    button.text = toolButton.text;
++    button.features = QStyleOptionButton::None;
++    if (toolButton.features & (QStyleOptionToolButton::HasMenu | QStyleOptionToolButton::MenuButtonPopup)) {
++        button.features |= QStyleOptionButton::HasMenu;
++    }
++    if (toolButton.state & (QStyle::State_Sunken | QStyle::State_On)) {
++        button.state |= QStyle::State_Sunken;
++    }
++    return button;
++}
++#endif
++
+ class KleopatraProxyStyle : public QProxyStyle
+ {
+ public:
+@@ -379,6 +432,13 @@
+ 
+     void drawComplexControl(ComplexControl control, const QStyleOptionComplex *option, QPainter *painter, const QWidget *widget = nullptr) const override
+     {
++        if (control == CC_ToolButton) {
++            if (auto opt = qstyleoption_cast<const QStyleOptionToolButton *>(option); isLabelledToolButton(widget, opt)) {
++                const QStyleOptionButton button = pushButtonOption(*opt);
++                QProxyStyle::drawControl(CE_PushButton, &button, painter, widget);
++                return;
++            }
++        }
+         // Qt's macOS style always draws a square bezel around tool buttons outside of toolbars,
+         // even with autoRaise; draw those borderless like AppKit's borderless buttons
+         auto toolButton = qobject_cast<const QToolButton *>(widget);
+@@ -403,6 +463,21 @@
+         QProxyStyle::drawComplexControl(control, option, painter, widget);
+     }
+ 
++    QSize sizeFromContents(ContentsType type, const QStyleOption *option, const QSize &size, const QWidget *widget = nullptr) const override
++    {
++        if (type == CT_ToolButton) {
++            if (auto opt = qstyleoption_cast<const QStyleOptionToolButton *>(option); isLabelledToolButton(widget, opt)) {
++                const QStyleOptionButton button = pushButtonOption(*opt);
++                QSize contents = opt->fontMetrics.size(Qt::TextShowMnemonic, opt->text);
++                if (button.features & QStyleOptionButton::HasMenu) {
++                    contents.rwidth() += pixelMetric(PM_MenuButtonIndicator, &button, widget);
++                }
++                return QProxyStyle::sizeFromContents(CT_PushButton, &button, contents, widget);
++            }
++        }
++        return QProxyStyle::sizeFromContents(type, option, size, widget);
++    }
++
+     QIcon standardIcon(StandardPixmap standardIcon, const QStyleOption *option = nullptr, const QWidget *widget = nullptr) const override
+     {
+         // the gray circled cross of AppKit search and text fields
+@@ -416,6 +491,13 @@
+ 
+     void drawControl(ControlElement element, const QStyleOption *option, QPainter *painter, const QWidget *widget = nullptr) const override
+     {
++        // AppKit menus separate groups with an inset hairline; Qt draws a full-width 2px band
++        if (element == CE_MenuItem) {
++            if (auto opt = qstyleoption_cast<const QStyleOptionMenuItem *>(option); opt && opt->menuItemType == QStyleOptionMenuItem::Separator) {
++                painter->fillRect(QRect(opt->rect.left() + 10, opt->rect.center().y(), opt->rect.width() - 20, 1), MacSystemColors::separator());
++                return;
++            }
++        }
+         // covers icons that are set on push buttons after they were polished
+         if (element == CE_PushButtonLabel) {
+             if (auto opt = qstyleoption_cast<const QStyleOptionButton *>(option); opt && !opt->text.isEmpty() && !opt->icon.isNull()) {
+@@ -455,6 +537,11 @@
+                 QStyleOption small = *option;
+                 small.rect = QRect(0, 0, std::min(option->rect.width(), maxSize), std::min(option->rect.height(), maxSize));
+                 small.rect.moveCenter(option->rect.center());
++                if (!widget) {
++                    // arrows painted into indicator pixmaps (e.g. the shortcut editor's expanders) are
++                    // secondary decoration; macOS draws such disclosure indicators in a muted color
++                    small.palette.setColor(QPalette::Text, small.palette.color(QPalette::PlaceholderText));
++                }
+                 QProxyStyle::drawPrimitive(element, &small, painter, widget);
+                 return;
+             }
+@@ -474,6 +561,12 @@
+         if (hint == QStyle::SH_ItemView_ActivateItemOnSingleClick)
+             return 0;
+ 
++#ifdef Q_OS_MACOS
++        // combo boxes open the native pop-up menu (Qt uses it only for plain combo boxes)
++        if (hint == QStyle::SH_ComboBox_UseNativePopup)
++            return 1;
++#endif
++
+         return QProxyStyle::styleHint(hint, option, widget, returnData);
+     }
+ };
+@@ -486,6 +579,8 @@
+ #ifdef Q_OS_MACOS
+     // "Monospace" is a fontconfig alias that does not exist on macOS
+     QFont::insertSubstitution(QStringLiteral("Monospace"), QStringLiteral("Menlo"));
++    installTranslator(new MacApplicationMenuTranslator(this));
++    MacNativeMenus::install(this);
+ #endif
+     connect(this, &QApplication::focusChanged, this, [this](QWidget *, QWidget *now) {
+         d->updateFocusFrame(now);
+@@ -1101,6 +1196,10 @@
+ 
+ void KleopatraApplication::showAboutDialog()
+ {
++#ifdef Q_OS_MACOS
++    MacAboutPanel::show(KAboutData::applicationData());
++    return;
++#endif
+     // we show the About dialog ourselves so that we can pass up-to-date about data to it;
+     // KXmlGuiWindow takes a copy of the about data on creation and this copy might not
+     // contain the backend version information that's set by a background thread
+diff -ruN a5/src/mainwindow.cpp b5/src/mainwindow.cpp
+--- a5/src/mainwindow.cpp	2026-10-28 15:38:21
++++ b5/src/mainwindow.cpp	2026-10-28 16:16:28
+@@ -27,6 +27,7 @@
+ #include "utils/action_data.h"
+ #ifdef Q_OS_MACOS
+ #include "utils/macsymbolicons.h"
++#include "utils/mactoolbareditor.h"
+ #endif
+ #include "utils/clipboardmenu.h"
+ #include "utils/detail_p.h"
+@@ -62,6 +63,10 @@
+ #include <KXMLGUIFactory>
+ #include <QAction>
+ #include <QApplication>
++#include <QPushButton>
++#include <QAbstractButton>
++#include <QDialogButtonBox>
++#include <QMenuBar>
+ #include <QLineEdit>
+ #include <QSize>
+ 
+@@ -96,6 +101,7 @@
+ #include <KSharedConfig>
+ 
+ #include <chrono>
++#include <functional>
+ #include <vector>
+ using namespace std::chrono_literals;
+ 
+@@ -232,12 +238,38 @@
+     }
+     void configureToolbars()
+     {
++#ifdef Q_OS_MACOS
++        // the macOS customization sheet instead of KDE's two-list editor
++        if (Kleo::MacToolBarEditor::edit(q, q->toolBar())) {
++            q->saveNewToolbarConfig();
++            setUpToolBarsForMacOS();
++            adaptMenusToMacOS();
++        }
++#else
+         KEditToolBar dlg(q->factory());
+         dlg.exec();
++#endif
+     }
+     void editKeybindings()
+     {
++#ifdef Q_OS_MACOS
++        // same as KShortcutsDialog::showDialog(), without the buttons for KDE's shortcut schemes
++        // and for printing the shortcut list, which have no counterpart on macOS
++        auto dialog = new KShortcutsDialog(KShortcutsEditor::AllActions, KShortcutsEditor::LetterShortcutsAllowed, q);
++        dialog->setAttribute(Qt::WA_DeleteOnClose);
++        dialog->addCollection(q->actionCollection());
++        if (auto buttonBox = dialog->findChild<QDialogButtonBox *>()) {
++            const auto buttons = buttonBox->buttons();
++            for (QAbstractButton *button : buttons) {
++                if (buttonBox->buttonRole(button) == QDialogButtonBox::ActionRole) {
++                    button->hide();
++                }
++            }
++        }
++        dialog->configure(true);
++#else
+         KShortcutsDialog::showDialog(q->actionCollection(), KShortcutsEditor::LetterShortcutsAllowed, q);
++#endif
+         updateSearchBarClickMessage();
+     }
+ 
+@@ -357,6 +389,10 @@
+ 
+ private:
+     void setupActions();
++#ifdef Q_OS_MACOS
++    void adaptMenusToMacOS();
++    void setUpToolBarsForMacOS();
++#endif
+ 
+     QAbstractItemView *currentView() const
+     {
+@@ -471,15 +507,11 @@
+ #ifdef Q_OS_MACOS
+     // native look: toolbar merged into the title bar, small labels like AppKit toolbars
+     q->setUnifiedTitleAndToolBarOnMac(true);
+-    const auto toolBars = q->toolBars();
+-    for (KToolBar *bar : toolBars) {
+-        QFont labelFont = bar->font();
+-        labelFont.setPointSizeF(11);
+-        bar->setFont(labelFont);
+-    }
++    setUpToolBarsForMacOS();
+     Kleo::MacSymbolIcons::apply(q->actionCollection()->actions() + q->findChildren<QAction *>());
+     // macOS does not fall back to the application name for an empty title
+     q->setWindowTitle(QGuiApplication::applicationDisplayName());
++    adaptMenusToMacOS();
+ #endif
+ 
+     // make toolbar buttons accessible by keyboard
+@@ -546,6 +578,122 @@
+ MainWindow::~MainWindow()
+ {
+ }
++
++#ifdef Q_OS_MACOS
++// small labels like AppKit toolbars, and AppKit's toolbar menu instead of KDE's
++// (text position, icon size, position locking)
++void MainWindow::Private::setUpToolBarsForMacOS()
++{
++    const auto toolBars = q->toolBars();
++    for (KToolBar *bar : toolBars) {
++        QFont labelFont = bar->font();
++        labelFont.setPointSizeF(11);
++        bar->setFont(labelFont);
++        // AppKit's toolbar menu instead of KDE's (text position, icon size, position locking)
++        if (bar->contextMenuPolicy() == Qt::CustomContextMenu) {
++            continue; // set up already (the GUI is rebuilt after customizing the toolbar)
++        }
++        bar->setContextMenuPolicy(Qt::CustomContextMenu);
++        connect(bar, &QWidget::customContextMenuRequested, q, [this, bar](const QPoint &pos) {
++            QMenu menu;
++            auto styles = new QActionGroup(&menu);
++            const std::pair<QString, Qt::ToolButtonStyle> choices[] = {
++                {i18nc("@action:inmenu toolbar style", "Icon and Text"), Qt::ToolButtonTextUnderIcon},
++                {i18nc("@action:inmenu toolbar style", "Icon Only"), Qt::ToolButtonIconOnly},
++                {i18nc("@action:inmenu toolbar style", "Text Only"), Qt::ToolButtonTextOnly},
++            };
++            for (const auto &[text, style] : choices) {
++                QAction *action = menu.addAction(text, bar, [bar, style]() {
++                    bar->setToolButtonStyle(style);
++                });
++                action->setCheckable(true);
++                action->setChecked(bar->toolButtonStyle() == style);
++                styles->addAction(action);
++            }
++            if (QAction *customize = q->actionCollection()->action(QStringLiteral("options_configure_toolbars"))) {
++                menu.addSeparator();
++                menu.addAction(customize);
++            }
++            menu.exec(bar->mapToGlobal(pos));
++        });
++    }
++}
++
++// macOS has no Settings menu: the toolbar items belong to the View menu, the remaining settings
++// to the application menu (next to Settings…, which Qt moves there already); the help menu
++// has its own search, and KDE's About entry has no place in a macOS application
++void MainWindow::Private::adaptMenusToMacOS()
++{
++    KActionCollection *const coll = q->actionCollection();
++    // Qt guesses application menu roles from the text, so e.g. View > "Configure sorting" was
++    // taken for the Settings item; KDE sets explicit roles for the standard actions anyway
++    std::function<void(QMenu *)> disableRoleHeuristic = [&](QMenu *menu) {
++        const auto actions = menu->actions();
++        for (QAction *action : actions) {
++            if (action->menuRole() == QAction::TextHeuristicRole) {
++                action->setMenuRole(QAction::NoRole);
++            }
++            if (action->menu()) {
++                disableRoleHeuristic(action->menu());
++            }
++        }
++    };
++    const auto topLevelMenus = q->menuBar()->actions();
++    for (QAction *action : topLevelMenus) {
++        if (action->menu()) {
++            disableRoleHeuristic(action->menu());
++        }
++    }
++    for (const char *name : {"options_configure_keybinding", "switch_application_language"}) {
++        if (QAction *action = coll->action(QLatin1StringView(name))) {
++            action->setMenuRole(QAction::ApplicationSpecificRole);
++        }
++    }
++    for (const char *name : {"help_about_kde", "open_kcommand_bar"}) {
++        if (QAction *action = coll->action(QLatin1StringView(name))) {
++            action->setVisible(false);
++        }
++    }
++    if (QAction *action = coll->action(QStringLiteral("options_configure_toolbars"))) {
++        action->setText(i18nc("@action:inmenu macOS wording", "Customize Toolbar…"));
++    }
++    // Settings… is Cmd+, on macOS (KDE's default is Ctrl+Shift+,); keep a shortcut the user chose
++    if (QAction *action = coll->action(QStringLiteral("options_configure"))) {
++        const QKeySequence kdeDefault(Qt::CTRL | Qt::SHIFT | Qt::Key_Comma);
++        const QKeySequence macDefault(Qt::CTRL | Qt::Key_Comma);
++        coll->setDefaultShortcut(action, macDefault);
++        if (action->shortcut() == kdeDefault) {
++            action->setShortcut(macDefault);
++        }
++    }
++
++    QMenu *viewMenu = nullptr;
++    QMenu *settingsMenu = nullptr;
++    const auto menuBarActions = q->menuBar()->actions();
++    for (QAction *action : menuBarActions) {
++        if (QMenu *menu = action->menu()) {
++            if (menu->objectName() == QLatin1StringView("_view")) {
++                viewMenu = menu;
++            } else if (menu->objectName() == QLatin1StringView("settings")) {
++                settingsMenu = menu;
++            }
++        }
++    }
++    if (!viewMenu || !settingsMenu) {
++        return;
++    }
++    // the items that Qt merges into the application menu have to stay in some menu of the menu bar
++    viewMenu->addSeparator();
++    const auto settingsActions = settingsMenu->actions();
++    for (QAction *action : settingsActions) {
++        settingsMenu->removeAction(action);
++        if (!action->isSeparator()) {
++            viewMenu->addAction(action);
++        }
++    }
++    settingsMenu->menuAction()->setVisible(false);
++}
++#endif
+ 
+ void MainWindow::Private::setupActions()
+ {
+diff -ruN a5/src/utils/macaboutpanel.h b5/src/utils/macaboutpanel.h
+--- a5/src/utils/macaboutpanel.h	1970-01-01 01:00:00
++++ b5/src/utils/macaboutpanel.h	2026-10-28 15:37:57
+@@ -0,0 +1,15 @@
++/*
++    This file is part of Kleopatra, the KDE keymanager
++
++    SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++#pragma once
++
++class KAboutData;
++
++namespace Kleo::MacAboutPanel
++{
++// Shows the standard macOS About panel (application icon, name, version, credits)
++void show(const KAboutData &aboutData);
++}
+diff -ruN a5/src/utils/macaboutpanel.mm b5/src/utils/macaboutpanel.mm
+--- a5/src/utils/macaboutpanel.mm	1970-01-01 01:00:00
++++ b5/src/utils/macaboutpanel.mm	2026-10-28 17:30:50
+@@ -0,0 +1,74 @@
++/*
++    This file is part of Kleopatra, the KDE keymanager
++
++    SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++#include "macaboutpanel.h"
++
++#include <KAboutData>
++
++#include <QTextDocument>
++#include <QTextDocumentFragment>
++
++#import <AppKit/AppKit.h>
++
++namespace
++{
++QString plainText(const QString &maybeRichText)
++{
++    if (!Qt::mightBeRichText(maybeRichText)) {
++        return maybeRichText.trimmed();
++    }
++    return QTextDocumentFragment::fromHtml(maybeRichText).toPlainText().trimmed();
++}
++}
++
++void Kleo::MacAboutPanel::show(const KAboutData &aboutData)
++{
++    QStringList paragraphs = {aboutData.shortDescription()};
++    if (const QString other = plainText(aboutData.otherText()); !other.isEmpty()) {
++        paragraphs << other;
++    }
++    if (!aboutData.licenses().isEmpty()) {
++        paragraphs << aboutData.licenses().constFirst().name(KAboutLicense::FullName);
++    }
++
++    // label colors are dynamic, so the credits follow light and dark mode
++    NSDictionary *textAttributes = @{
++        NSFontAttributeName: [NSFont systemFontOfSize:NSFont.smallSystemFontSize],
++        NSForegroundColorAttributeName: NSColor.secondaryLabelColor,
++    };
++    NSMutableAttributedString *credits =
++        [[[NSMutableAttributedString alloc] initWithString:paragraphs.join(QStringLiteral("\n\n")).toNSString() attributes:textAttributes] autorelease];
++    const auto appendText = [&](const QString &text) {
++        [credits appendAttributedString:[[[NSAttributedString alloc] initWithString:text.toNSString() attributes:textAttributes] autorelease]];
++    };
++    const auto appendLink = [&](const QString &url, const QString &label) {
++        NSDictionary *linkAttributes = @{
++            NSFontAttributeName: [NSFont systemFontOfSize:NSFont.smallSystemFontSize],
++            NSLinkAttributeName: [NSURL URLWithString:url.toNSString()],
++        };
++        [credits appendAttributedString:[[[NSAttributedString alloc] initWithString:label.toNSString() attributes:linkAttributes] autorelease]];
++    };
++    if (!aboutData.homepage().isEmpty()) {
++        appendText(QStringLiteral("\n\n"));
++        appendLink(aboutData.homepage(), aboutData.homepage());
++    }
++    // where this macOS build comes from, and the project it builds on
++    appendText(QStringLiteral("\n\nmacOS build:\n"));
++    appendLink(QStringLiteral("https://github.com/giorgiobrullo/homebrew-kleopatra4mac"), QStringLiteral("giorgiobrullo/homebrew-kleopatra4mac"));
++    appendText(QStringLiteral("\nbased on kleopatra4mac by "));
++    appendLink(QStringLiteral("https://github.com/algertc/homebrew-kleopatra4mac"), QStringLiteral("algertc"));
++    NSMutableParagraphStyle *centered = [[[NSMutableParagraphStyle alloc] init] autorelease];
++    centered.alignment = NSTextAlignmentCenter;
++    [credits addAttribute:NSParagraphStyleAttributeName value:centered range:NSMakeRange(0, credits.length)];
++
++    [NSApp orderFrontStandardAboutPanelWithOptions:@{
++        NSAboutPanelOptionApplicationName: aboutData.displayName().toNSString(),
++        NSAboutPanelOptionApplicationVersion: aboutData.version().toNSString(),
++        NSAboutPanelOptionVersion: @"",
++        @"Copyright": plainText(aboutData.copyrightStatement()).toNSString(),
++        NSAboutPanelOptionCredits: credits,
++    }];
++}
+diff -ruN a5/src/utils/macnativemenus.h b5/src/utils/macnativemenus.h
+--- a5/src/utils/macnativemenus.h	1970-01-01 01:00:00
++++ b5/src/utils/macnativemenus.h	2026-10-28 16:09:10
+@@ -0,0 +1,17 @@
++/*
++    This file is part of Kleopatra, the KDE keymanager
++
++    SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++#pragma once
++
++class QApplication;
++
++namespace Kleo::MacNativeMenus
++{
++// Shows popup menus (context menus, button menus) as native NSMenus instead of Qt-drawn ones.
++// The QMenu still runs as usual, invisibly, and receives the item chosen in the native menu,
++// so QMenu::exec() and the triggered() signals behave unchanged.
++void install(QApplication *app);
++}
+diff -ruN a5/src/utils/macnativemenus.mm b5/src/utils/macnativemenus.mm
+--- a5/src/utils/macnativemenus.mm	1970-01-01 01:00:00
++++ b5/src/utils/macnativemenus.mm	2026-10-28 16:14:34
+@@ -0,0 +1,195 @@
++/*
++    This file is part of Kleopatra, the KDE keymanager
++
++    SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++#include "macnativemenus.h"
++
++#include <QAction>
++#include <QApplication>
++#include <QImage>
++#include <QKeyEvent>
++#include <QMenu>
++#include <QMenuBar>
++#include <QPointer>
++#include <QScreen>
++#include <QTimer>
++#include <QWidgetAction>
++
++#import <AppKit/AppKit.h>
++
++static QAction *chosenAction = nullptr;
++
++@interface KleoNativeMenuTarget : NSObject
++@property(nonatomic, assign) QAction *action;
++- (void)activate:(id)sender;
++@end
++
++@implementation KleoNativeMenuTarget
++- (void)activate:(id)sender
++{
++    Q_UNUSED(sender);
++    chosenAction = self.action;
++}
++@end
++
++namespace
++{
++bool isNativeCompatible(QMenu *menu)
++{
++    const auto actions = menu->actions();
++    for (QAction *action : actions) {
++        if (qobject_cast<QWidgetAction *>(action) || (action->menu() && !isNativeCompatible(action->menu()))) {
++            return false;
++        }
++    }
++    return true;
++}
++
++NSString *menuTitle(const QAction *action)
++{
++    QString text = action->text();
++    text.replace(QStringLiteral("&&"), QStringLiteral("\u0001")).remove(QLatin1Char('&')).replace(QChar(1), QLatin1Char('&'));
++    return text.toNSString();
++}
++
++void setKeyEquivalent(NSMenuItem *item, const QKeySequence &shortcut)
++{
++    if (shortcut.isEmpty()) {
++        return;
++    }
++    const QKeyCombination combination = shortcut[0];
++    const int key = combination.key();
++    if (key < 0x20 || key > 0x7e) {
++        return; // only printable keys; the shortcut still works, it is just not displayed
++    }
++    item.keyEquivalent = QString(QChar(key)).toLower().toNSString();
++    NSEventModifierFlags flags = 0;
++    const Qt::KeyboardModifiers modifiers = combination.keyboardModifiers();
++    if (modifiers & Qt::ControlModifier) {
++        flags |= NSEventModifierFlagCommand; // Qt maps Cmd to Ctrl on macOS
++    }
++    if (modifiers & Qt::MetaModifier) {
++        flags |= NSEventModifierFlagControl;
++    }
++    if (modifiers & Qt::AltModifier) {
++        flags |= NSEventModifierFlagOption;
++    }
++    if (modifiers & Qt::ShiftModifier) {
++        flags |= NSEventModifierFlagShift;
++    }
++    item.keyEquivalentModifierMask = flags;
++}
++
++NSMenu *buildMenu(QMenu *menu)
++{
++    NSMenu *nsMenu = [[[NSMenu alloc] initWithTitle:@""] autorelease];
++    nsMenu.autoenablesItems = NO;
++    const auto actions = menu->actions();
++    bool pendingSeparator = false;
++    for (QAction *action : actions) {
++        if (!action->isVisible()) {
++            continue;
++        }
++        if (action->isSeparator()) {
++            pendingSeparator = nsMenu.numberOfItems > 0;
++            continue;
++        }
++        if (pendingSeparator) {
++            [nsMenu addItem:[NSMenuItem separatorItem]];
++            pendingSeparator = false;
++        }
++        NSMenuItem *item = [[[NSMenuItem alloc] initWithTitle:menuTitle(action) action:nil keyEquivalent:@""] autorelease];
++        item.enabled = action->isEnabled();
++        item.state = action->isChecked() ? NSControlStateValueOn : NSControlStateValueOff;
++        // SF Symbol icons (see MacSymbolIcons) as template images, so they follow the highlight;
++        // AppKit shows bitmap images in menus where it leaves out system symbol images
++        if (action->isIconVisibleInMenu() && !action->icon().isNull()
++            && [NSImage imageWithSystemSymbolName:action->icon().name().toNSString() accessibilityDescription:nil]) {
++            const QImage image = action->icon().pixmap(QSize(16, 16), 2.0).toImage();
++            if (CGImageRef cgImage = image.toCGImage()) {
++                NSImage *nsImage = [[[NSImage alloc] initWithCGImage:cgImage size:NSMakeSize(16, 16)] autorelease];
++                [nsImage setTemplate:YES];
++                item.image = nsImage;
++                CGImageRelease(cgImage);
++            }
++        }
++        if (QMenu *subMenu = action->menu()) {
++            Q_EMIT subMenu->aboutToShow(); // populates menus that are filled on demand
++            item.submenu = buildMenu(subMenu);
++        } else {
++            KleoNativeMenuTarget *target = [[[KleoNativeMenuTarget alloc] init] autorelease];
++            target.action = action;
++            item.target = target;
++            item.representedObject = target; // keeps the target alive
++            item.action = @selector(activate:);
++            setKeyEquivalent(item, action->shortcut());
++        }
++        [nsMenu addItem:item];
++    }
++    return nsMenu;
++}
++
++void showNatively(QPointer<QMenu> menu)
++{
++    if (!menu || !menu->isVisible()) {
++        return;
++    }
++    // where Qt placed the menu, in Cocoa's screen coordinates (origin at the bottom left)
++    const QPoint topLeft = menu->geometry().topLeft();
++    const CGFloat primaryHeight = NSScreen.screens.firstObject.frame.size.height;
++
++    chosenAction = nullptr;
++    @autoreleasepool {
++        NSMenu *nsMenu = buildMenu(menu);
++        [nsMenu popUpMenuPositioningItem:nil atLocation:NSMakePoint(topLeft.x(), primaryHeight - topLeft.y()) inView:nil];
++    }
++    QAction *action = chosenAction;
++    chosenAction = nullptr;
++    if (!menu) {
++        return;
++    }
++    if (action && menu->actions().contains(action)) {
++        // let the QMenu activate the item itself, so that exec() returns it
++        menu->setActiveAction(action);
++        QKeyEvent press(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
++        QApplication::sendEvent(menu, &press);
++    } else {
++        menu->close();
++        if (action) {
++            action->trigger(); // chosen in a submenu
++        }
++    }
++}
++
++class PopupMenuFilter : public QObject
++{
++public:
++    using QObject::QObject;
++
++    bool eventFilter(QObject *obj, QEvent *event) override
++    {
++        if (event->type() == QEvent::Show) {
++            auto menu = qobject_cast<QMenu *>(obj);
++            // menus of the menu bar are native already; submenus are part of their native parent
++            if (menu && menu->isWindow() && !qobject_cast<QMenu *>(menu->parentWidget()) && !qobject_cast<QMenuBar *>(menu->parentWidget())
++                && isNativeCompatible(menu)) {
++                menu->setWindowOpacity(0.0); // the Qt menu keeps running, invisibly
++                QTimer::singleShot(0, menu, [menu = QPointer<QMenu>(menu)]() {
++                    showNatively(menu);
++                    if (menu) {
++                        menu->setWindowOpacity(1.0);
++                    }
++                });
++            }
++        }
++        return false;
++    }
++};
++}
++
++void Kleo::MacNativeMenus::install(QApplication *app)
++{
++    app->installEventFilter(new PopupMenuFilter(app));
++}
+diff -ruN a5/src/utils/macsymbolicons.mm b5/src/utils/macsymbolicons.mm
+--- a5/src/utils/macsymbolicons.mm	2026-10-28 15:45:09
++++ b5/src/utils/macsymbolicons.mm	2026-10-28 16:19:24
+@@ -72,6 +72,7 @@
+         {QStringLiteral("help-contents"), QStringLiteral("book")},
+         {QStringLiteral("tools-report-bug"), QStringLiteral("ladybug")},
+         {QStringLiteral("help-donate-eur"), QStringLiteral("heart")},
++        {QStringLiteral("toolbar-space"), QStringLiteral("square.dashed")},
+         // settings pages
+         {QStringLiteral("view-certificate-server-configure"), QStringLiteral("server.rack")},
+         {QStringLiteral("applications-graphics"), QStringLiteral("paintbrush")},
+@@ -218,6 +219,19 @@
+ };
+ }
+ 
++namespace
++{
++// actions whose requested icon is missing from Breeze, so QIcon only knows the fallback's name
++const QHash<QString, QString> &symbolForAction()
++{
++    static const QHash<QString, QString> map = {
++        {QStringLiteral("certificates_revoke"), QStringLiteral("xmark.seal")},
++        {QStringLiteral("certificates_revoke_certification"), QStringLiteral("xmark.seal")},
++    };
++    return map;
++}
++}
++
+ QIcon Kleo::MacSymbolIcons::icon(const QString &iconName, QPalette::ColorRole role)
+ {
+     const auto &map = symbolForIconName();
+@@ -231,6 +245,10 @@
+ void Kleo::MacSymbolIcons::apply(const QList<QAction *> &actions)
+ {
+     for (QAction *action : actions) {
++        if (const auto it = symbolForAction().constFind(action->objectName()); it != symbolForAction().cend() && symbolExists(*it)) {
++            action->setIcon(QIcon(new SymbolIconEngine(*it, QPalette::WindowText)));
++            continue;
++        }
+         const QIcon symbol = icon(action->icon().name());
+         if (!symbol.isNull()) {
+             action->setIcon(symbol);
+diff -ruN a5/src/utils/macsystemcolors.h b5/src/utils/macsystemcolors.h
+--- a5/src/utils/macsystemcolors.h	2026-10-28 15:45:09
++++ b5/src/utils/macsystemcolors.h	2026-10-28 15:45:09
+@@ -18,4 +18,7 @@
+ 
+ // NSColor.textBackgroundColor for the current appearance
+ QColor textBackground();
++
++// NSColor.separatorColor for the current appearance
++QColor separator();
+ }
+diff -ruN a5/src/utils/macsystemcolors.mm b5/src/utils/macsystemcolors.mm
+--- a5/src/utils/macsystemcolors.mm	2026-10-28 15:45:09
++++ b5/src/utils/macsystemcolors.mm	2026-10-28 15:45:09
+@@ -55,6 +55,15 @@
+     return color;
+ }
+ 
++QColor Kleo::MacSystemColors::separator()
++{
++    __block QColor color;
++    [NSApp.effectiveAppearance performAsCurrentDrawingAppearance:^{
++        color = toQColor(NSColor.separatorColor);
++    }];
++    return color;
++}
++
+ void Kleo::MacSystemColors::applyToKColorScheme(const QPalette &palette)
+ {
+     if (!NSApp) {
+diff -ruN a5/src/utils/mactoolbareditor.cpp b5/src/utils/mactoolbareditor.cpp
+--- a5/src/utils/mactoolbareditor.cpp	1970-01-01 01:00:00
++++ b5/src/utils/mactoolbareditor.cpp	2026-10-28 16:57:20
+@@ -0,0 +1,306 @@
++/*
++    This file is part of Kleopatra, the KDE keymanager
++
++    SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++#include "mactoolbareditor.h"
++
++#include "macsymbolicons.h"
++
++#include <KActionCollection>
++#include <KLocalizedString>
++#include <KToolBar>
++#include <KXMLGUIFactory>
++#include <KXmlGuiWindow>
++
++#include <QComboBox>
++#include <QDialog>
++#include <QDialogButtonBox>
++#include <QDomDocument>
++#include <QDropEvent>
++#include <QFile>
++#include <QHBoxLayout>
++#include <QLabel>
++#include <QListWidget>
++#include <QMenu>
++#include <QPushButton>
++#include <QStyle>
++#include <QVBoxLayout>
++
++using namespace Kleo;
++
++namespace
++{
++const QString separatorName = QStringLiteral("separator");
++
++QString plainText(QString text)
++{
++    return text.replace(QStringLiteral("&&"), QStringLiteral("\u0001")).remove(QLatin1Char('&')).replace(QChar(1), QLatin1Char('&'));
++}
++
++QListWidgetItem *createItem(const QString &name, KActionCollection *collection)
++{
++    if (name == separatorName) {
++        // AppKit shows the toolbar space as a dashed box
++        auto item = new QListWidgetItem(MacSymbolIcons::icon(QStringLiteral("toolbar-space")), i18nc("@item toolbar item that adds a gap", "Space"));
++        item->setData(Qt::UserRole, separatorName);
++        return item;
++    }
++    const QAction *action = collection->action(name);
++    if (!action) {
++        return nullptr;
++    }
++    auto item = new QListWidgetItem(action->icon(), plainText(action->iconText().isEmpty() ? action->text() : action->iconText()));
++    item->setData(Qt::UserRole, name);
++    item->setToolTip(plainText(action->text()));
++    return item;
++}
++
++void setUpIconGrid(QListWidget *list)
++{
++    list->setViewMode(QListView::IconMode);
++    list->setMovement(QListView::Static); // drops reorder instead of placing freely
++    list->setIconSize(QSize(24, 24));
++    list->setGridSize(QSize(104, 64));
++    list->setWordWrap(true);
++    list->setSelectionMode(QAbstractItemView::SingleSelection);
++    list->setDragEnabled(true);
++    list->setAcceptDrops(true);
++    list->setDropIndicatorShown(true);
++    list->setDragDropMode(QAbstractItemView::DragDrop);
++}
++
++// the items currently in the toolbar; dragging reorders them
++class ToolBarStrip : public QListWidget
++{
++public:
++    explicit ToolBarStrip(QWidget *parent)
++        : QListWidget(parent)
++    {
++        setUpIconGrid(this);
++        setFlow(QListView::LeftToRight);
++        setWrapping(false);
++        setDefaultDropAction(Qt::MoveAction);
++        setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
++        setFixedHeight(gridSize().height() + 2 * frameWidth() + style()->pixelMetric(QStyle::PM_ScrollBarExtent) + 8);
++    }
++
++    bool contains(const QString &name) const
++    {
++        for (int row = 0; row < count(); ++row) {
++            if (item(row)->data(Qt::UserRole).toString() == name) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++protected:
++    void dropEvent(QDropEvent *event) override
++    {
++        // an item from the palette that is already in the toolbar is not added twice
++        if (auto palette = qobject_cast<QListWidget *>(event->source()); palette && palette != this) {
++            const auto selected = palette->selectedItems();
++            const QString name = selected.isEmpty() ? QString() : selected.constFirst()->data(Qt::UserRole).toString();
++            if (name != separatorName && contains(name)) {
++                event->ignore();
++                return;
++            }
++        }
++        QListWidget::dropEvent(event);
++    }
++};
++
++// all items that can be put into the toolbar; dropping a toolbar item here removes it
++class Palette : public QListWidget
++{
++public:
++    Palette(QWidget *parent, ToolBarStrip *strip)
++        : QListWidget(parent)
++        , mStrip(strip)
++    {
++        setUpIconGrid(this);
++        setWrapping(true);
++        setResizeMode(QListView::Adjust);
++    }
++
++protected:
++    void startDrag(Qt::DropActions) override
++    {
++        QListWidget::startDrag(Qt::CopyAction); // the palette keeps its items
++    }
++
++    void dragEnterEvent(QDragEnterEvent *event) override
++    {
++        acceptToolBarItems(event);
++    }
++
++    void dragMoveEvent(QDragMoveEvent *event) override
++    {
++        acceptToolBarItems(event);
++    }
++
++    void dropEvent(QDropEvent *event) override
++    {
++        // accepting the move makes the strip remove the dragged item
++        event->setDropAction(Qt::MoveAction);
++        event->accept();
++    }
++
++private:
++    void acceptToolBarItems(QDragMoveEvent *event)
++    {
++        if (event->source() == mStrip) {
++            event->setDropAction(Qt::MoveAction);
++            event->accept();
++        } else {
++            event->ignore();
++        }
++    }
++
++    ToolBarStrip *const mStrip;
++};
++
++QDomElement toolBarElement(const QDomDocument &document, const QString &toolBarName)
++{
++    const QDomNodeList toolBars = document.elementsByTagName(QStringLiteral("ToolBar"));
++    for (int i = 0; i < toolBars.count(); ++i) {
++        const QDomElement element = toolBars.item(i).toElement();
++        if (element.attribute(QStringLiteral("name")) == toolBarName) {
++            return element;
++        }
++    }
++    return {};
++}
++
++QStringList itemNames(const QDomElement &toolBar)
++{
++    QStringList names;
++    for (QDomElement child = toolBar.firstChildElement(); !child.isNull(); child = child.nextSiblingElement()) {
++        if (child.tagName() == QLatin1StringView("Action")) {
++            names << child.attribute(QStringLiteral("name"));
++        } else if (child.tagName() == QLatin1StringView("Separator")) {
++            names << separatorName;
++        }
++    }
++    return names;
++}
++
++QStringList defaultItemNames(KXmlGuiWindow *window, const QString &toolBarName)
++{
++    // the toolbar as shipped, compiled into the application
++    QFile file(QStringLiteral(":/kxmlgui5/%1/%2").arg(window->componentName(), window->xmlFile()));
++    QDomDocument document;
++    if (!file.open(QIODevice::ReadOnly) || !document.setContent(&file)) {
++        return {};
++    }
++    return itemNames(toolBarElement(document, toolBarName));
++}
++
++}
++
++bool Kleo::MacToolBarEditor::edit(KXmlGuiWindow *window, KToolBar *toolBar)
++{
++    KActionCollection *const collection = window->actionCollection();
++    QDomDocument document = window->domDocument();
++    QDomElement toolBarXml = toolBarElement(document, toolBar->objectName());
++    if (toolBarXml.isNull()) {
++        return false;
++    }
++    const QStringList currentNames = itemNames(toolBarXml);
++
++    QDialog sheet(window);
++    sheet.setWindowFlag(Qt::Sheet);
++    sheet.setWindowModality(Qt::WindowModal); // exec() would make it application modal, which is no sheet
++    auto layout = new QVBoxLayout(&sheet);
++    auto title = new QLabel(i18nc("@info", "Drag your favorite items into the toolbar…"), &sheet);
++    layout->addWidget(title);
++    auto strip = new ToolBarStrip(&sheet);
++    layout->addWidget(strip);
++    layout->addWidget(new QLabel(i18nc("@info", "Drag items back here to remove them from the toolbar."), &sheet));
++    auto palette = new Palette(&sheet, strip);
++    palette->setMinimumSize(560, 260);
++    layout->addWidget(palette, 1);
++
++    const auto fillStrip = [strip, collection](const QStringList &names) {
++        strip->clear();
++        for (const QString &name : names) {
++            if (QListWidgetItem *item = createItem(name, collection)) {
++                strip->addItem(item);
++            }
++        }
++    };
++    fillStrip(currentNames);
++
++    // every action with an icon is a candidate, as in KEditToolBar, plus a space
++    palette->addItem(createItem(separatorName, collection));
++    QList<QAction *> candidates = collection->actions();
++    std::sort(candidates.begin(), candidates.end(), [](const QAction *a, const QAction *b) {
++        return plainText(a->text()).localeAwareCompare(plainText(b->text())) < 0;
++    });
++    for (const QAction *action : std::as_const(candidates)) {
++        if (!action->icon().isNull() && !action->text().isEmpty() && !action->menu() && action->isVisible()) {
++            palette->addItem(createItem(action->objectName(), collection));
++        }
++    }
++
++    auto bottom = new QHBoxLayout;
++    bottom->addWidget(new QLabel(i18nc("@label:listbox toolbar style", "Show:"), &sheet));
++    auto show = new QComboBox(&sheet);
++    show->addItem(i18nc("@item:inlistbox toolbar style", "Icon and Text"), int(Qt::ToolButtonTextUnderIcon));
++    show->addItem(i18nc("@item:inlistbox toolbar style", "Icon Only"), int(Qt::ToolButtonIconOnly));
++    show->addItem(i18nc("@item:inlistbox toolbar style", "Text Only"), int(Qt::ToolButtonTextOnly));
++    show->setCurrentIndex(std::max(0, show->findData(int(toolBar->toolButtonStyle()))));
++    bottom->addWidget(show);
++    bottom->addStretch();
++    auto buttons = new QDialogButtonBox(&sheet);
++    QPushButton *defaults = buttons->addButton(i18nc("@action:button", "Use Default Set"), QDialogButtonBox::ResetRole);
++    QPushButton *done = buttons->addButton(i18nc("@action:button", "Done"), QDialogButtonBox::AcceptRole);
++    done->setDefault(true);
++    bottom->addWidget(buttons);
++    layout->addLayout(bottom);
++    QObject::connect(defaults, &QPushButton::clicked, &sheet, [&]() {
++        fillStrip(defaultItemNames(window, toolBar->objectName()));
++    });
++    QObject::connect(buttons, &QDialogButtonBox::accepted, &sheet, &QDialog::accept);
++
++    if (sheet.exec() != QDialog::Accepted) {
++        return false;
++    }
++
++    toolBar->setToolButtonStyle(static_cast<Qt::ToolButtonStyle>(show->currentData().toInt()));
++
++    QStringList newNames;
++    for (int row = 0; row < strip->count(); ++row) {
++        newNames << strip->item(row)->data(Qt::UserRole).toString();
++    }
++    if (newNames == currentNames) {
++        return false;
++    }
++    // replace the toolbar's items in the XML and save it as the local GUI file, like KEditToolBar
++    for (QDomElement child = toolBarXml.firstChildElement(); !child.isNull();) {
++        const QDomElement next = child.nextSiblingElement();
++        if (child.tagName() == QLatin1StringView("Action") || child.tagName() == QLatin1StringView("Separator")) {
++            toolBarXml.removeChild(child);
++        }
++        child = next;
++    }
++    for (const QString &name : std::as_const(newNames)) {
++        QDomElement element = document.createElement(name == separatorName ? QStringLiteral("Separator") : QStringLiteral("Action"));
++        if (name != separatorName) {
++            element.setAttribute(QStringLiteral("name"), name);
++        }
++        toolBarXml.appendChild(element);
++    }
++    // the document includes the merged standard menus; as KEditToolBar does, keep them from
++    // being merged a second time when the local file is loaded
++    const QDomNodeList menus = document.elementsByTagName(QStringLiteral("Menu"));
++    for (int i = 0; i < menus.count(); ++i) {
++        menus.item(i).toElement().setAttribute(QStringLiteral("noMerge"), QStringLiteral("1"));
++    }
++    KXMLGUIFactory::saveConfigFile(document, window->localXMLFile());
++    // rebuilds the GUI from the XML files, the local one included (as KEditToolBar does)
++    window->createGUI(window->xmlFile());
++    return true;
++}
+diff -ruN a5/src/utils/mactoolbareditor.h b5/src/utils/mactoolbareditor.h
+--- a5/src/utils/mactoolbareditor.h	1970-01-01 01:00:00
++++ b5/src/utils/mactoolbareditor.h	2026-10-28 16:15:34
+@@ -0,0 +1,18 @@
++/*
++    This file is part of Kleopatra, the KDE keymanager
++
++    SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++#pragma once
++
++class KToolBar;
++class KXmlGuiWindow;
++
++namespace Kleo::MacToolBarEditor
++{
++// The macOS way of customizing a toolbar: a sheet with a palette of items that are dragged
++// into or out of the toolbar. The result is saved like KEditToolBar does, in the window's
++// local XML GUI file. Returns true if the GUI was rebuilt.
++bool edit(KXmlGuiWindow *window, KToolBar *toolBar);
++}
+diff -ruN a5/src/view/tabwidget.cpp b5/src/view/tabwidget.cpp
+--- a5/src/view/tabwidget.cpp	2026-10-28 16:09:05
++++ b5/src/view/tabwidget.cpp	2026-10-28 16:09:05
+@@ -940,7 +940,12 @@
+             [this](bool) {
+                 d->slotExpandAll();
+             },
++#ifdef Q_OS_MACOS
++            // Finder's "expand all"; Cmd+. and Cmd+, are reserved on macOS (cancel, Settings)
++            QStringLiteral("CTRL+ALT+Right"),
++#else
+             QStringLiteral("CTRL+."),
++#endif
+             RegularQAction,
+             Disabled,
+         },
+@@ -953,7 +958,11 @@
+             [this](bool) {
+                 d->slotCollapseAll();
+             },
++#ifdef Q_OS_MACOS
++            QStringLiteral("CTRL+ALT+Left"),
++#else
+             QStringLiteral("CTRL+,"),
++#endif
+             RegularQAction,
+             Disabled,
+         },

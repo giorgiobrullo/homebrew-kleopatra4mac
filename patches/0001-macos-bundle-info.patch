@@ -1,0 +1,37 @@
+diff -ru a/src/CMakeLists.txt b/src/CMakeLists.txt
+--- a/src/CMakeLists.txt	2026-10-28 14:42:27
++++ b/src/CMakeLists.txt	2026-10-28 14:42:27
+@@ -583,6 +583,16 @@
+ #    set_target_properties(kleopatra_bin PROPERTIES UNITY_BUILD ON)
+ #endif()
+ set_target_properties(kleopatra_bin PROPERTIES OUTPUT_NAME kleopatra)
++if(APPLE)
++    set_target_properties(kleopatra_bin PROPERTIES
++        MACOSX_BUNDLE_GUI_IDENTIFIER "org.kde.kleopatra"
++        MACOSX_BUNDLE_BUNDLE_NAME "Kleopatra"
++        MACOSX_BUNDLE_DISPLAY_NAME "Kleopatra"
++        MACOSX_BUNDLE_SHORT_VERSION_STRING "${KLEOPATRA_VERSION_STRING}"
++        MACOSX_BUNDLE_LONG_VERSION_STRING "${KLEOPATRA_VERSION_STRING}"
++        MACOSX_BUNDLE_BUNDLE_VERSION "${KLEOPATRA_VERSION_STRING}"
++        MACOSX_BUNDLE_COPYRIGHT "KDE e.V. and the Kleopatra developers")
++endif()
+ 
+ if (WIN32)
+   set(_kleopatra_platform_libs "secur32")
+diff -ru a/src/kwatchgnupg/CMakeLists.txt b/src/kwatchgnupg/CMakeLists.txt
+--- a/src/kwatchgnupg/CMakeLists.txt	2026-10-28 14:42:27
++++ b/src/kwatchgnupg/CMakeLists.txt	2026-10-28 14:42:27
+@@ -32,6 +32,13 @@
+ ecm_install_icons(ICONS ${ICONS_SRCS} DESTINATION ${KDE_INSTALL_ICONDIR})
+ 
+ add_executable(kwatchgnupg ${kwatchgnupg_SRCS})
++if(APPLE)
++    set_target_properties(kwatchgnupg PROPERTIES
++        MACOSX_BUNDLE_GUI_IDENTIFIER "org.kde.kwatchgnupg"
++        MACOSX_BUNDLE_BUNDLE_NAME "KWatchGnuPG"
++        MACOSX_BUNDLE_SHORT_VERSION_STRING "${KLEOPATRA_VERSION_STRING}"
++        MACOSX_BUNDLE_BUNDLE_VERSION "${KLEOPATRA_VERSION_STRING}")
++endif()
+ if (COMPILE_WITH_UNITY_CMAKE_SUPPORT)
+     set_target_properties(kwatchgnupg PROPERTIES UNITY_BUILD ON)
+ endif()

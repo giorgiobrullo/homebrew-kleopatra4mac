@@ -1,0 +1,44 @@
+diff -ru a/src/kleopatraapplication.cpp b/src/kleopatraapplication.cpp
+--- a/src/kleopatraapplication.cpp	2026-10-28 14:49:59
++++ b/src/kleopatraapplication.cpp	2026-10-28 14:49:59
+@@ -12,6 +12,8 @@
+ 
+ #include "kleopatraapplication.h"
+ 
++#include <QFont>
++
+ #include "kleopatra_options.h"
+ #include "mainwindow.h"
+ #include "settings.h"
+@@ -347,6 +349,10 @@
+     , d(new Private(this))
+ {
+     setStyle(new KleopatraProxyStyle);
++#ifdef Q_OS_MACOS
++    // "Monospace" is a fontconfig alias that does not exist on macOS
++    QFont::insertSubstitution(QStringLiteral("Monospace"), QStringLiteral("Menlo"));
++#endif
+     connect(this, &QApplication::focusChanged, this, [this](QWidget *, QWidget *now) {
+         d->updateFocusFrame(now);
+     });
+diff -ru a/src/mainwindow.cpp b/src/mainwindow.cpp
+--- a/src/mainwindow.cpp	2026-10-28 14:49:59
++++ b/src/mainwindow.cpp	2026-10-28 14:53:20
+@@ -465,6 +465,17 @@
+         connect(helpMenu, &KHelpMenu::showAboutApplication, KleopatraApplication::instance(), &KleopatraApplication::showAboutDialog);
+     }
+ 
++#ifdef Q_OS_MACOS
++    // native look: toolbar merged into the title bar, small labels like AppKit toolbars
++    q->setUnifiedTitleAndToolBarOnMac(true);
++    const auto toolBars = q->toolBars();
++    for (KToolBar *bar : toolBars) {
++        QFont labelFont = bar->font();
++        labelFont.setPointSizeF(11);
++        bar->setFont(labelFont);
++    }
++#endif
++
+     // make toolbar buttons accessible by keyboard
+     auto toolbar = q->findChild<KToolBar *>();
+     if (toolbar) {

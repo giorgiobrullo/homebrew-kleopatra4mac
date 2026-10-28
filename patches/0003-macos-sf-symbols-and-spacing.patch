@@ -1,0 +1,379 @@
+diff -ruN a/src/CMakeLists.txt b/src/CMakeLists.txt
+--- a/src/CMakeLists.txt	2026-10-28 14:58:48
++++ b/src/CMakeLists.txt	2026-10-28 14:59:42
+@@ -584,6 +584,11 @@
+ #endif()
+ set_target_properties(kleopatra_bin PROPERTIES OUTPUT_NAME kleopatra)
+ if(APPLE)
++    enable_language(OBJCXX)
++    target_sources(kleopatra_bin PRIVATE utils/macsymbolicons.mm)
++    target_link_libraries(kleopatra_bin "-framework AppKit")
++endif()
++if(APPLE)
+     set_target_properties(kleopatra_bin PROPERTIES
+         MACOSX_BUNDLE_GUI_IDENTIFIER "org.kde.kleopatra"
+         MACOSX_BUNDLE_BUNDLE_NAME "Kleopatra"
+diff -ruN a/src/kleopatraapplication.cpp b/src/kleopatraapplication.cpp
+--- a/src/kleopatraapplication.cpp	2026-10-28 15:01:11
++++ b/src/kleopatraapplication.cpp	2026-10-28 15:06:50
+@@ -14,6 +14,16 @@
+ 
+ #include <QFont>
+ 
++#ifdef Q_OS_MACOS
++#include "utils/macsymbolicons.h"
++
++#include <QAbstractButton>
++#include <QPainter>
++#include <QStyleOptionToolButton>
++#include <QToolBar>
++#include <QToolButton>
++#endif
++
+ #include "kleopatra_options.h"
+ #include "mainwindow.h"
+ #include "settings.h"
+@@ -329,6 +339,64 @@
+ class KleopatraProxyStyle : public QProxyStyle
+ {
+ public:
++#ifdef Q_OS_MACOS
++    using QProxyStyle::polish;
++
++    void polish(QWidget *widget) override
++    {
++        QProxyStyle::polish(widget);
++        auto button = qobject_cast<QAbstractButton *>(widget);
++        if (!button) {
++            return;
++        }
++        // buttons with their own icon; actions are converted by the main window
++        const QIcon symbol = MacSymbolIcons::icon(button->icon().name());
++        if (!symbol.isNull()) {
++            button->setIcon(symbol);
++        }
++        // icon-only tool buttons outside of toolbars are borderless on macOS
++        auto toolButton = qobject_cast<QToolButton *>(widget);
++        if (toolButton && toolButton->toolButtonStyle() == Qt::ToolButtonIconOnly && !qobject_cast<QToolBar *>(widget->parentWidget())) {
++            toolButton->setAutoRaise(true);
++        }
++    }
++
++    void drawComplexControl(ComplexControl control, const QStyleOptionComplex *option, QPainter *painter, const QWidget *widget = nullptr) const override
++    {
++        // Qt's macOS style always draws a square bezel around tool buttons outside of toolbars,
++        // even with autoRaise; draw those borderless like AppKit's borderless buttons
++        auto toolButton = qobject_cast<const QToolButton *>(widget);
++        auto opt = qstyleoption_cast<const QStyleOptionToolButton *>(option);
++        if (control == CC_ToolButton && toolButton && opt && toolButton->autoRaise() && !qobject_cast<QToolBar *>(widget->parentWidget())
++            && !(opt->features & QStyleOptionToolButton::HasMenu)) {
++            if (opt->state & (State_Sunken | State_On)) {
++                QColor highlight = opt->palette.color(QPalette::WindowText);
++                highlight.setAlphaF(0.12);
++                painter->save();
++                painter->setRenderHint(QPainter::Antialiasing);
++                painter->setPen(Qt::NoPen);
++                painter->setBrush(highlight);
++                painter->drawRoundedRect(QRectF(opt->rect).adjusted(1, 1, -1, -1), 5, 5);
++                painter->restore();
++            }
++            QStyleOptionToolButton label = *opt;
++            label.rect = subControlRect(control, opt, SC_ToolButton, widget);
++            drawControl(CE_ToolButtonLabel, &label, painter, widget);
++            return;
++        }
++        QProxyStyle::drawComplexControl(control, option, painter, widget);
++    }
++
++    void drawPrimitive(PrimitiveElement element, const QStyleOption *option, QPainter *painter, const QWidget *widget = nullptr) const override
++    {
++        // AppKit toolbars group items by spacing, not separator lines
++        if (element == QStyle::PE_IndicatorToolBarSeparator) {
++            return;
++        }
++        QProxyStyle::drawPrimitive(element, option, painter, widget);
++    }
++#endif
++
+     int styleHint(StyleHint hint, const QStyleOption *option = nullptr, const QWidget *widget = nullptr, QStyleHintReturn *returnData = nullptr) const override
+     {
+         // disable parent<->child navigation in tree views with left/right arrow keys
+diff -ruN a/src/mainwindow.cpp b/src/mainwindow.cpp
+--- a/src/mainwindow.cpp	2026-10-28 14:58:48
++++ b/src/mainwindow.cpp	2026-10-28 15:01:11
+@@ -25,6 +25,9 @@
+ #include "commands/signencryptfilescommand.h"
+ 
+ #include "utils/action_data.h"
++#ifdef Q_OS_MACOS
++#include "utils/macsymbolicons.h"
++#endif
+ #include "utils/clipboardmenu.h"
+ #include "utils/detail_p.h"
+ #include "utils/distributiondata.h"
+@@ -474,6 +477,7 @@
+         labelFont.setPointSizeF(11);
+         bar->setFont(labelFont);
+     }
++    Kleo::MacSymbolIcons::apply(q->actionCollection()->actions() + q->findChildren<QAction *>());
+ #endif
+ 
+     // make toolbar buttons accessible by keyboard
+diff -ruN a/src/utils/macsymbolicons.h b/src/utils/macsymbolicons.h
+--- a/src/utils/macsymbolicons.h	1970-01-01 01:00:00
++++ b/src/utils/macsymbolicons.h	2026-10-28 15:04:46
+@@ -0,0 +1,22 @@
++/*
++    This file is part of Kleopatra, the KDE keymanager
++
++    SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++#pragma once
++
++#include <QIcon>
++#include <QList>
++
++class QAction;
++
++namespace Kleo::MacSymbolIcons
++{
++// Replace the Breeze icons of known actions with the matching SF Symbols.
++// Icons without a mapping, or whose symbol is missing on this macOS, are left alone.
++void apply(const QList<QAction *> &actions);
++
++// The SF Symbol icon for a freedesktop icon name, or a null icon if there is none.
++QIcon icon(const QString &iconName);
++}
+diff -ruN a/src/utils/macsymbolicons.mm b/src/utils/macsymbolicons.mm
+--- a/src/utils/macsymbolicons.mm	1970-01-01 01:00:00
++++ b/src/utils/macsymbolicons.mm	2026-10-28 15:04:46
+@@ -0,0 +1,202 @@
++/*
++    This file is part of Kleopatra, the KDE keymanager
++
++    SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++#include "macsymbolicons.h"
++
++#include <QAction>
++#include <QGuiApplication>
++#include <QHash>
++#include <QIconEngine>
++#include <QImage>
++#include <QPainter>
++#include <QPalette>
++#include <QPixmap>
++#include <QPixmapCache>
++
++#include <algorithm>
++
++#import <AppKit/AppKit.h>
++
++namespace
++{
++const QHash<QString, QString> &symbolForIconName()
++{
++    static const QHash<QString, QString> map = {
++        {QStringLiteral("document-edit-sign-encrypt"), QStringLiteral("lock.doc")},
++        {QStringLiteral("document-edit-decrypt-verify"), QStringLiteral("lock.open")},
++        {QStringLiteral("view-certificate-import"), QStringLiteral("square.and.arrow.down")},
++        {QStringLiteral("view-certificate-export"), QStringLiteral("square.and.arrow.up")},
++        {QStringLiteral("view-certificate-sign"), QStringLiteral("checkmark.seal")},
++        {QStringLiteral("edit-find"), QStringLiteral("magnifyingglass")},
++        {QStringLiteral("note"), QStringLiteral("note.text")},
++        {QStringLiteral("auth-sim-locked"), QStringLiteral("creditcard")},
++        {QStringLiteral("group"), QStringLiteral("person.2")},
++        {QStringLiteral("tab-new-background"), QStringLiteral("plus")},
++        {QStringLiteral("tab-close"), QStringLiteral("xmark")},
++        {QStringLiteral("edit-undo"), QStringLiteral("arrow.uturn.backward")},
++        {QStringLiteral("view-refresh"), QStringLiteral("arrow.clockwise")},
++        {QStringLiteral("edit-delete"), QStringLiteral("trash")},
++        {QStringLiteral("resource-group-new"), QStringLiteral("person.badge.plus")},
++        {QStringLiteral("document-open"), QStringLiteral("folder")},
++        {QStringLiteral("help-contextual"), QStringLiteral("info.circle")},
++    };
++    return map;
++}
++
++bool symbolExists(const QString &symbol)
++{
++    @autoreleasepool {
++        return [NSImage imageWithSystemSymbolName:symbol.toNSString() accessibilityDescription:nil] != nil;
++    }
++}
++
++QColor tintColor(QIcon::Mode mode)
++{
++    const QPalette pal = QGuiApplication::palette();
++    switch (mode) {
++    case QIcon::Disabled:
++        return pal.color(QPalette::Disabled, QPalette::WindowText);
++    case QIcon::Selected:
++        return pal.color(QPalette::Active, QPalette::HighlightedText);
++    default:
++        return pal.color(QPalette::Active, QPalette::WindowText);
++    }
++}
++
++// Draws an SF Symbol, tinted with the current palette so it follows light/dark mode
++class SymbolIconEngine : public QIconEngine
++{
++public:
++    explicit SymbolIconEngine(const QString &symbol)
++        : m_symbol(symbol)
++    {
++    }
++
++    QIconEngine *clone() const override
++    {
++        return new SymbolIconEngine(m_symbol);
++    }
++
++    QString key() const override
++    {
++        return QStringLiteral("KleoSymbolIconEngine");
++    }
++
++    QString iconName() override
++    {
++        return m_symbol;
++    }
++
++    QSize actualSize(const QSize &size, QIcon::Mode, QIcon::State) override
++    {
++        return size;
++    }
++
++    QList<QSize> availableSizes(QIcon::Mode, QIcon::State) override
++    {
++        return {{16, 16}, {22, 22}, {32, 32}, {48, 48}, {64, 64}};
++    }
++
++    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override
++    {
++        return scaledPixmap(size, mode, state, 1.0);
++    }
++
++    void paint(QPainter *painter, const QRect &rect, QIcon::Mode mode, QIcon::State state) override
++    {
++        const qreal scale = painter->device() ? painter->device()->devicePixelRatio() : 1.0;
++        painter->drawPixmap(rect, scaledPixmap(rect.size(), mode, state, scale));
++    }
++
++    QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State, qreal scale) override
++    {
++        const QColor color = tintColor(mode);
++        const QString cacheKey = QStringLiteral("kleo-sf-%1-%2x%3@%4-%5")
++                                     .arg(m_symbol)
++                                     .arg(size.width())
++                                     .arg(size.height())
++                                     .arg(scale)
++                                     .arg(color.rgba(), 0, 16);
++        QPixmap pixmap;
++        if (QPixmapCache::find(cacheKey, &pixmap)) {
++            return pixmap;
++        }
++
++        const int width = qRound(size.width() * scale);
++        const int height = qRound(size.height() * scale);
++        if (width <= 0 || height <= 0) {
++            return {};
++        }
++        QImage image(width, height, QImage::Format_ARGB32_Premultiplied);
++        image.fill(Qt::transparent);
++
++        @autoreleasepool {
++            NSImage *symbol = [NSImage imageWithSystemSymbolName:m_symbol.toNSString() accessibilityDescription:nil];
++            NSImageSymbolConfiguration *config = [NSImageSymbolConfiguration configurationWithPointSize:size.height() * 0.7
++                                                                                                 weight:NSFontWeightRegular
++                                                                                                  scale:NSImageSymbolScaleMedium];
++            symbol = [symbol imageWithSymbolConfiguration:config];
++            if (symbol) {
++                // fit into the requested size, keeping the symbol's aspect ratio
++                const NSSize natural = symbol.size;
++                const CGFloat fit = std::min(width * 0.9 / natural.width, height * 0.9 / natural.height);
++                const NSSize drawn = NSMakeSize(natural.width * fit, natural.height * fit);
++
++                CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
++                CGContextRef context = CGBitmapContextCreate(image.bits(),
++                                                             width,
++                                                             height,
++                                                             8,
++                                                             image.bytesPerLine(),
++                                                             colorSpace,
++                                                             kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host);
++                [NSGraphicsContext saveGraphicsState];
++                NSGraphicsContext.currentContext = [NSGraphicsContext graphicsContextWithCGContext:context flipped:NO];
++                [symbol drawInRect:NSMakeRect((width - drawn.width) / 2, (height - drawn.height) / 2, drawn.width, drawn.height)
++                          fromRect:NSZeroRect
++                         operation:NSCompositingOperationSourceOver
++                          fraction:1.0];
++                [NSGraphicsContext restoreGraphicsState];
++                CGContextRelease(context);
++                CGColorSpaceRelease(colorSpace);
++            }
++        }
++
++        QPainter painter(&image);
++        painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
++        painter.fillRect(image.rect(), color);
++        painter.end();
++
++        pixmap = QPixmap::fromImage(image);
++        pixmap.setDevicePixelRatio(scale);
++        QPixmapCache::insert(cacheKey, pixmap);
++        return pixmap;
++    }
++
++private:
++    QString m_symbol;
++};
++}
++
++QIcon Kleo::MacSymbolIcons::icon(const QString &iconName)
++{
++    const auto &map = symbolForIconName();
++    const auto it = map.constFind(iconName);
++    if (it == map.cend() || !symbolExists(*it)) {
++        return {};
++    }
++    return QIcon(new SymbolIconEngine(*it));
++}
++
++void Kleo::MacSymbolIcons::apply(const QList<QAction *> &actions)
++{
++    for (QAction *action : actions) {
++        const QIcon symbol = icon(action->icon().name());
++        if (!symbol.isNull()) {
++            action->setIcon(symbol);
++        }
++    }
++}
+diff -ruN a/src/view/keytreeview.cpp b/src/view/keytreeview.cpp
+--- a/src/view/keytreeview.cpp	2026-10-28 14:58:48
++++ b/src/view/keytreeview.cpp	2026-10-28 14:59:42
+@@ -227,6 +227,9 @@
+     m_view->setSelectionMode(QAbstractItemView::ExtendedSelection);
+     m_view->setAllColumnsShowFocus(false);
+     m_view->setSortingEnabled(true);
++#ifdef Q_OS_MACOS
++    m_view->setAlternatingRowColors(true);
++#endif
+     m_view->setAccessibleName(i18n("Certificates"));
+     m_view->setAccessibleDescription(m_isHierarchical ? i18n("Hierarchical list of certificates") : i18n("List of certificates"));
+     // we show details on double-click
+diff -ruN a/src/view/padwidget.cpp b/src/view/padwidget.cpp
+--- a/src/view/padwidget.cpp	2026-10-28 14:59:09
++++ b/src/view/padwidget.cpp	2026-10-28 15:04:46
+@@ -159,6 +159,9 @@
+ 
+         auto btnLay = new QHBoxLayout;
+         btnLay->setSpacing(q->style()->pixelMetric(QStyle::PM_LayoutHorizontalSpacing));
++#ifdef Q_OS_MACOS
++        btnLay->setSpacing(8);
++#endif
+         btnLay->setContentsMargins(q->style()->pixelMetric(QStyle::PM_LayoutLeftMargin),
+                                    q->style()->pixelMetric(QStyle::PM_LayoutTopMargin),
+                                    q->style()->pixelMetric(QStyle::PM_LayoutRightMargin),

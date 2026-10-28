@@ -1,0 +1,598 @@
+diff -ruN a/src/CMakeLists.txt b/src/CMakeLists.txt
+--- a/src/CMakeLists.txt	2026-10-28 15:29:13
++++ b/src/CMakeLists.txt	2026-10-28 15:29:13
+@@ -585,7 +585,7 @@
+ set_target_properties(kleopatra_bin PROPERTIES OUTPUT_NAME kleopatra)
+ if(APPLE)
+     enable_language(OBJCXX)
+-    target_sources(kleopatra_bin PRIVATE utils/macsymbolicons.mm)
++    target_sources(kleopatra_bin PRIVATE utils/macsymbolicons.mm utils/macsystemcolors.mm)
+     target_link_libraries(kleopatra_bin "-framework AppKit")
+ endif()
+ if(APPLE)
+diff -ruN a/src/conf/configuredialog.cpp b/src/conf/configuredialog.cpp
+--- a/src/conf/configuredialog.cpp	2026-10-28 15:14:35
++++ b/src/conf/configuredialog.cpp	2026-10-28 15:14:51
+@@ -31,7 +31,12 @@
+ ConfigureDialog::ConfigureDialog(QWidget *parent)
+     : KleoPageConfigDialog(parent)
+ {
++#ifdef Q_OS_MACOS
++    // small icons beside the page names, like the macOS System Settings sidebar
++    setFaceType(KPageDialog::FlatList);
++#else
+     setFaceType(KPageDialog::List);
++#endif
+     setWindowTitle(i18nc("@title:window", "Configure"));
+ 
+     const auto settings = Kleo::Settings{};
+diff -ruN a/src/conf/kleopageconfigdialog.cpp b/src/conf/kleopageconfigdialog.cpp
+--- a/src/conf/kleopageconfigdialog.cpp	2026-10-28 15:14:35
++++ b/src/conf/kleopageconfigdialog.cpp	2026-10-28 15:14:58
+@@ -22,6 +22,10 @@
+ 
+ #include "kleoconfigmodule.h"
+ 
++#ifdef Q_OS_MACOS
++#include "utils/macsymbolicons.h"
++#endif
++
+ #include <QDesktopServices>
+ #include <QDialogButtonBox>
+ #include <QLocale>
+@@ -189,6 +193,11 @@
+     module->load();
+     auto item = addPage(module, name);
+     item->setIcon(QIcon::fromTheme(icon));
++#ifdef Q_OS_MACOS
++    if (const QIcon symbol = Kleo::MacSymbolIcons::icon(icon); !symbol.isNull()) {
++        item->setIcon(symbol);
++    }
++#endif
+     connect(module, &KleoConfigModule::changed, this, [this, module]() {
+         moduleChanged(true);
+         mChangedModules.insert(module);
+diff -ruN a/src/crypto/gui/certificatelineedit.cpp b/src/crypto/gui/certificatelineedit.cpp
+--- a/src/crypto/gui/certificatelineedit.cpp	2026-10-28 15:34:45
++++ b/src/crypto/gui/certificatelineedit.cpp	2026-10-28 15:34:45
+@@ -748,6 +748,10 @@
+ {
+     mStatusAction->setIcon(statusIcon());
+     mStatusAction->setToolTip(statusToolTip());
++#ifdef Q_OS_MACOS
++    // an empty field would otherwise start with a blank gap where the status icon goes
++    mStatusAction->setVisible(!mStatusAction->icon().isNull());
++#endif
+ }
+ 
+ namespace
+diff -ruN a/src/crypto/gui/signencryptfilesdialog.cpp b/src/crypto/gui/signencryptfilesdialog.cpp
+--- a/src/crypto/gui/signencryptfilesdialog.cpp	2026-10-28 15:18:52
++++ b/src/crypto/gui/signencryptfilesdialog.cpp	2026-10-28 15:19:04
+@@ -14,6 +14,9 @@
+ 
+ #include "signencryptfilesdialog.h"
+ 
++#ifdef Q_OS_MACOS
++#include "utils/macsymbolicons.h"
++#endif
+ #include "resultpage.h"
+ #include "signencryptwidget.h"
+ 
+@@ -79,7 +82,11 @@
+ 
+     void setIcon(const QIcon &icon)
+     {
++#ifdef Q_OS_MACOS
++        mIconLabel->setPixmap(icon.pixmap(22, 22));
++#else
+         mIconLabel->setPixmap(icon.pixmap(32, 32));
++#endif
+     }
+ 
+     void setFileName(const QString &name)
+@@ -399,6 +406,11 @@
+             const auto id = requester.id;
+             auto requesterWithIcon = new FileNameRequesterWithIcon{id == SignEncryptFilesDialog::Directory ? QDir::Dirs : QDir::Files, this};
+             requesterWithIcon->setIcon(QIcon::fromTheme(requester.icon));
++#ifdef Q_OS_MACOS
++            if (const QIcon symbol = MacSymbolIcons::icon(requester.icon); !symbol.isNull()) {
++                requesterWithIcon->setIcon(symbol);
++            }
++#endif
+             requesterWithIcon->setToolTip(requester.toolTip);
+             requesterWithIcon->requester()->setAccessibleNameOfLineEdit(requester.accessibleName);
+             requesterWithIcon->setNameFilter(isAscii ? requester.nameFilterAscii : requester.nameFilterBinary);
+@@ -553,7 +565,13 @@
+         mComplianceLabelButton->setFocusPolicy(Qt::NoFocus);
+     }
+ 
++#ifdef Q_OS_MACOS
++    // macOS puts the primary button last, as default button; ActionRole would put it on the far left
++    mOkButton = buttons->addButton(i18nc("@action:button", "&Sign / Encrypt"), QDialogButtonBox::AcceptRole);
++    mOkButton->setDefault(true);
++#else
+     mOkButton = buttons->addButton(i18nc("@action:button", "&Sign / Encrypt"), QDialogButtonBox::ActionRole);
++#endif
+     QPointer<QPushButton> cancelButton = buttons->addButton(QDialogButtonBox::Cancel);
+     connect(cancelButton, &QPushButton::clicked, this, &QDialog::reject);
+     connect(mOkButton, &QPushButton::clicked, this, [this]() {
+diff -ruN a/src/crypto/gui/wizard.cpp b/src/crypto/gui/wizard.cpp
+--- a/src/crypto/gui/wizard.cpp	2026-10-28 15:18:52
++++ b/src/crypto/gui/wizard.cpp	2026-10-28 15:19:04
+@@ -117,7 +117,13 @@
+     nextButton = new QPushButton;
+     KGuiItem::assign(nextButton, nextItem);
+     q->connect(nextButton, &QPushButton::clicked, q, &Wizard::next);
++#ifdef Q_OS_MACOS
++    // macOS puts the primary button last, as default button; ActionRole would put it on the far left
++    box->addButton(nextButton, QDialogButtonBox::AcceptRole);
++    nextButton->setDefault(true);
++#else
+     box->addButton(nextButton, QDialogButtonBox::ActionRole);
++#endif
+     buttonLayout->addWidget(box);
+ 
+     top->addWidget(buttonWidget);
+diff -ruN a/src/dialogs/signencryptclipboarddialog.cpp b/src/dialogs/signencryptclipboarddialog.cpp
+--- a/src/dialogs/signencryptclipboarddialog.cpp	2026-10-28 15:18:52
++++ b/src/dialogs/signencryptclipboarddialog.cpp	2026-10-28 15:19:04
+@@ -146,7 +146,13 @@
+         mComplianceLabelButton->setFocusPolicy(Qt::NoFocus);
+     }
+ 
++#ifdef Q_OS_MACOS
++    // macOS puts the primary button last, as default button; ActionRole would put it on the far left
++    mOkButton = buttons->addButton(i18nc("@action:button", "Continue"), QDialogButtonBox::AcceptRole);
++    mOkButton->setDefault(true);
++#else
+     mOkButton = buttons->addButton(i18nc("@action:button", "Continue"), QDialogButtonBox::ActionRole);
++#endif
+     auto cancelButton = buttons->addButton(QDialogButtonBox::Cancel);
+     connect(cancelButton, &QPushButton::clicked, this, [this]() {
+         reject();
+diff -ruN a/src/kleopatraapplication.cpp b/src/kleopatraapplication.cpp
+--- a/src/kleopatraapplication.cpp	2026-10-28 15:14:35
++++ b/src/kleopatraapplication.cpp	2026-10-28 15:33:00
+@@ -16,9 +16,12 @@
+ 
+ #ifdef Q_OS_MACOS
+ #include "utils/macsymbolicons.h"
++#include "utils/macsystemcolors.h"
+ 
+ #include <QAbstractButton>
+ #include <QPainter>
++#include <QPushButton>
++#include <QStyleOptionButton>
+ #include <QStyleOptionToolButton>
+ #include <QToolBar>
+ #include <QToolButton>
+@@ -342,6 +345,14 @@
+ #ifdef Q_OS_MACOS
+     using QProxyStyle::polish;
+ 
++    void polish(QPalette &palette) override
++    {
++        QProxyStyle::polish(palette);
++        // called for every new application palette (also on light/dark switches), before
++        // widgets are notified, so KColorScheme users already get the matching colors
++        MacSystemColors::applyToKColorScheme(palette);
++    }
++
+     void polish(QWidget *widget) override
+     {
+         QProxyStyle::polish(widget);
+@@ -349,6 +360,11 @@
+         if (!button) {
+             return;
+         }
++        // macOS push buttons with a label never carry an icon
++        if (qobject_cast<QPushButton *>(widget) && !button->text().isEmpty()) {
++            button->setIcon(QIcon());
++            return;
++        }
+         // buttons with their own icon; actions are converted by the main window
+         const QIcon symbol = MacSymbolIcons::icon(button->icon().name());
+         if (!symbol.isNull()) {
+@@ -387,11 +403,61 @@
+         QProxyStyle::drawComplexControl(control, option, painter, widget);
+     }
+ 
++    QIcon standardIcon(StandardPixmap standardIcon, const QStyleOption *option = nullptr, const QWidget *widget = nullptr) const override
++    {
++        // the gray circled cross of AppKit search and text fields
++        if (standardIcon == SP_LineEditClearButton) {
++            if (const QIcon symbol = MacSymbolIcons::icon(QStringLiteral("edit-clear-locationbar-rtl"), QPalette::PlaceholderText); !symbol.isNull()) {
++                return symbol;
++            }
++        }
++        return QProxyStyle::standardIcon(standardIcon, option, widget);
++    }
++
++    void drawControl(ControlElement element, const QStyleOption *option, QPainter *painter, const QWidget *widget = nullptr) const override
++    {
++        // covers icons that are set on push buttons after they were polished
++        if (element == CE_PushButtonLabel) {
++            if (auto opt = qstyleoption_cast<const QStyleOptionButton *>(option); opt && !opt->text.isEmpty() && !opt->icon.isNull()) {
++                QStyleOptionButton noIcon = *opt;
++                noIcon.icon = QIcon();
++                QProxyStyle::drawControl(element, &noIcon, painter, widget);
++                return;
++            }
++        }
++        QProxyStyle::drawControl(element, option, painter, widget);
++    }
++
+     void drawPrimitive(PrimitiveElement element, const QStyleOption *option, QPainter *painter, const QWidget *widget = nullptr) const override
+     {
+         // AppKit toolbars group items by spacing, not separator lines
+         if (element == QStyle::PE_IndicatorToolBarSeparator) {
+             return;
++        }
++        // Since Liquid Glass, Qt draws the native rounded text field only if the field's base color
++        // is exactly the system text background; otherwise (e.g. disabled fields) it falls back to a
++        // plain square border. Keep fields with a deliberately custom background as they are.
++        if (element == PE_FrameLineEdit) {
++            const QPalette::ColorGroup group = option->palette.currentColorGroup();
++            if (option->palette.color(group, QPalette::Base) == QApplication::palette().color(group, QPalette::Base)) {
++                if (auto frame = qstyleoption_cast<const QStyleOptionFrame *>(option)) {
++                    QStyleOptionFrame nativeFrame = *frame;
++                    nativeFrame.palette.setColor(group, QPalette::Base, MacSystemColors::textBackground());
++                    QProxyStyle::drawPrimitive(element, &nativeFrame, painter, widget);
++                    return;
++                }
++            }
++        }
++        // the macOS style scales arrows with the space they get; keep them disclosure-sized
++        if (element == PE_IndicatorArrowUp || element == PE_IndicatorArrowDown || element == PE_IndicatorArrowLeft || element == PE_IndicatorArrowRight) {
++            constexpr int maxSize = 10;
++            if (option->rect.width() > maxSize || option->rect.height() > maxSize) {
++                QStyleOption small = *option;
++                small.rect = QRect(0, 0, std::min(option->rect.width(), maxSize), std::min(option->rect.height(), maxSize));
++                small.rect.moveCenter(option->rect.center());
++                QProxyStyle::drawPrimitive(element, &small, painter, widget);
++                return;
++            }
+         }
+         QProxyStyle::drawPrimitive(element, option, painter, widget);
+     }
+diff -ruN a/src/mainwindow.cpp b/src/mainwindow.cpp
+--- a/src/mainwindow.cpp	2026-10-28 15:16:49
++++ b/src/mainwindow.cpp	2026-10-28 15:29:13
+@@ -478,6 +478,8 @@
+         bar->setFont(labelFont);
+     }
+     Kleo::MacSymbolIcons::apply(q->actionCollection()->actions() + q->findChildren<QAction *>());
++    // macOS does not fall back to the application name for an empty title
++    q->setWindowTitle(QGuiApplication::applicationDisplayName());
+ #endif
+ 
+     // make toolbar buttons accessible by keyboard
+@@ -683,9 +685,13 @@
+     KStandardAction::keyBindings(q, SLOT(editKeybindings()), coll);
+     KStandardAction::preferences(qApp, SLOT(openOrRaiseConfigDialog()), coll);
+ 
++#ifndef Q_OS_MACOS
++    // on macOS the colors follow the system appearance (see MacSystemColors); a KDE color
++    // scheme would replace the native palette
+     auto manager = KColorSchemeManager::instance();
+     KActionMenu *schemeMenu = KColorSchemeMenu::createMenu(manager, q);
+     coll->addAction(QStringLiteral("colorscheme_menu"), schemeMenu->menu()->menuAction());
++#endif
+ 
+     focusToClickSearchAction = new QAction(i18nc("@action", "Set Focus to Quick Search"), q);
+     coll->addAction(QStringLiteral("focus_to_quickseach"), focusToClickSearchAction);
+diff -ruN a/src/utils/macsymbolicons.h b/src/utils/macsymbolicons.h
+--- a/src/utils/macsymbolicons.h	2026-10-28 15:18:52
++++ b/src/utils/macsymbolicons.h	2026-10-28 15:18:52
+@@ -8,6 +8,7 @@
+ 
+ #include <QIcon>
+ #include <QList>
++#include <QPalette>
+ 
+ class QAction;
+ 
+@@ -18,5 +19,6 @@
+ void apply(const QList<QAction *> &actions);
+ 
+ // The SF Symbol icon for a freedesktop icon name, or a null icon if there is none.
+-QIcon icon(const QString &iconName);
++// The symbol is tinted with the given palette role.
++QIcon icon(const QString &iconName, QPalette::ColorRole role = QPalette::WindowText);
+ }
+diff -ruN a/src/utils/macsymbolicons.mm b/src/utils/macsymbolicons.mm
+--- a/src/utils/macsymbolicons.mm	2026-10-28 15:14:35
++++ b/src/utils/macsymbolicons.mm	2026-10-28 15:34:19
+@@ -42,6 +42,41 @@
+         {QStringLiteral("resource-group-new"), QStringLiteral("person.badge.plus")},
+         {QStringLiteral("document-open"), QStringLiteral("folder")},
+         {QStringLiteral("help-contextual"), QStringLiteral("info.circle")},
++        {QStringLiteral("arrow-down"), QStringLiteral("chevron.down")},
++        {QStringLiteral("document-sign"), QStringLiteral("signature")},
++        {QStringLiteral("edit-copy"), QStringLiteral("doc.on.doc")},
++        {QStringLiteral("editor"), QStringLiteral("pencil")},
++        {QStringLiteral("application-menu"), QStringLiteral("ellipsis.circle")},
++        {QStringLiteral("info"), QStringLiteral("info.circle")},
++        {QStringLiteral("favorite"), QStringLiteral("star")},
++        {QStringLiteral("view-certificate-revoke"), QStringLiteral("xmark.seal")},
++        {QStringLiteral("edit-clear-locationbar-rtl"), QStringLiteral("xmark.circle.fill")},
++        {QStringLiteral("arrow-up"), QStringLiteral("chevron.up")},
++        // menu items
++        {QStringLiteral("view-certificate-export-secret"), QStringLiteral("key")},
++        {QStringLiteral("view-certificate-add"), QStringLiteral("plus.circle")},
++        {QStringLiteral("view-certificate"), QStringLiteral("person.text.rectangle")},
++        {QStringLiteral("view-certificate-export-server"), QStringLiteral("arrow.up.circle")},
++        {QStringLiteral("folder-edit-sign-encrypt-symbolic"), QStringLiteral("folder")},
++        {QStringLiteral("dvipdf"), QStringLiteral("printer")},
++        {QStringLiteral("document-print"), QStringLiteral("printer")},
++        {QStringLiteral("document-close"), QStringLiteral("xmark")},
++        {QStringLiteral("edit-paste"), QStringLiteral("doc.on.clipboard")},
++        {QStringLiteral("view-sort"), QStringLiteral("arrow.up.arrow.down")},
++        {QStringLiteral("show_table_column"), QStringLiteral("tablecells")},
++        {QStringLiteral("search"), QStringLiteral("magnifyingglass")},
++        {QStringLiteral("preferences-desktop-locale"), QStringLiteral("globe")},
++        {QStringLiteral("configure"), QStringLiteral("gearshape")},
++        {QStringLiteral("configure-shortcuts"), QStringLiteral("keyboard")},
++        {QStringLiteral("configure-toolbars"), QStringLiteral("menubar.rectangle")},
++        {QStringLiteral("help-contents"), QStringLiteral("book")},
++        {QStringLiteral("tools-report-bug"), QStringLiteral("ladybug")},
++        {QStringLiteral("help-donate-eur"), QStringLiteral("heart")},
++        // settings pages
++        {QStringLiteral("view-certificate-server-configure"), QStringLiteral("server.rack")},
++        {QStringLiteral("applications-graphics"), QStringLiteral("paintbrush")},
++        {QStringLiteral("document-encrypt"), QStringLiteral("lock")},
++        {QStringLiteral("applications-network"), QStringLiteral("network")},
+     };
+     return map;
+ }
+@@ -53,16 +88,16 @@
+     }
+ }
+ 
+-QColor tintColor(QIcon::Mode mode)
++QColor tintColor(QIcon::Mode mode, QPalette::ColorRole role)
+ {
+     const QPalette pal = QGuiApplication::palette();
+     switch (mode) {
+     case QIcon::Disabled:
+-        return pal.color(QPalette::Disabled, QPalette::WindowText);
++        return pal.color(QPalette::Disabled, role);
+     case QIcon::Selected:
+         return pal.color(QPalette::Active, QPalette::HighlightedText);
+     default:
+-        return pal.color(QPalette::Active, QPalette::WindowText);
++        return pal.color(QPalette::Active, role);
+     }
+ }
+ 
+@@ -70,14 +105,15 @@
+ class SymbolIconEngine : public QIconEngine
+ {
+ public:
+-    explicit SymbolIconEngine(const QString &symbol)
++    SymbolIconEngine(const QString &symbol, QPalette::ColorRole role)
+         : m_symbol(symbol)
++        , m_role(role)
+     {
+     }
+ 
+     QIconEngine *clone() const override
+     {
+-        return new SymbolIconEngine(m_symbol);
++        return new SymbolIconEngine(m_symbol, m_role);
+     }
+ 
+     QString key() const override
+@@ -113,7 +149,7 @@
+ 
+     QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State, qreal scale) override
+     {
+-        const QColor color = tintColor(mode);
++        const QColor color = tintColor(mode, m_role);
+         const QString cacheKey = QStringLiteral("kleo-sf-%1-%2x%3@%4-%5")
+                                      .arg(m_symbol)
+                                      .arg(size.width())
+@@ -178,17 +214,18 @@
+ 
+ private:
+     QString m_symbol;
++    QPalette::ColorRole m_role;
+ };
+ }
+ 
+-QIcon Kleo::MacSymbolIcons::icon(const QString &iconName)
++QIcon Kleo::MacSymbolIcons::icon(const QString &iconName, QPalette::ColorRole role)
+ {
+     const auto &map = symbolForIconName();
+     const auto it = map.constFind(iconName);
+     if (it == map.cend() || !symbolExists(*it)) {
+         return {};
+     }
+-    return QIcon(new SymbolIconEngine(*it));
++    return QIcon(new SymbolIconEngine(*it, role));
+ }
+ 
+ void Kleo::MacSymbolIcons::apply(const QList<QAction *> &actions)
+@@ -197,6 +234,9 @@
+         const QIcon symbol = icon(action->icon().name());
+         if (!symbol.isNull()) {
+             action->setIcon(symbol);
++        } else if (!action->icon().isNull() && !symbolForIconName().values().contains(action->icon().name())) {
++            // like macOS menus, show only symbol icons; KDE artwork stays in toolbars and dialogs
++            action->setIconVisibleInMenu(false);
+         }
+     }
+ }
+diff -ruN a/src/utils/macsystemcolors.h b/src/utils/macsystemcolors.h
+--- a/src/utils/macsystemcolors.h	1970-01-01 01:00:00
++++ b/src/utils/macsystemcolors.h	2026-10-28 15:33:00
+@@ -0,0 +1,21 @@
++/*
++    This file is part of Kleopatra, the KDE keymanager
++
++    SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++#pragma once
++
++class QColor;
++class QPalette;
++
++namespace Kleo::MacSystemColors
++{
++// Points KColorScheme at a color scheme built from the macOS system colors (systemGreen,
++// systemRed, linkColor, the accent color, ...) and the given palette, so that positive /
++// negative highlights and the like match the current light or dark appearance.
++void applyToKColorScheme(const QPalette &palette);
++
++// NSColor.textBackgroundColor for the current appearance
++QColor textBackground();
++}
+diff -ruN a/src/utils/macsystemcolors.mm b/src/utils/macsystemcolors.mm
+--- a/src/utils/macsystemcolors.mm	1970-01-01 01:00:00
++++ b/src/utils/macsystemcolors.mm	2026-10-28 15:33:00
+@@ -0,0 +1,112 @@
++/*
++    This file is part of Kleopatra, the KDE keymanager
++
++    SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++#include "macsystemcolors.h"
++
++#include <KConfig>
++#include <KConfigGroup>
++
++#include <QApplication>
++#include <QColor>
++#include <QDir>
++#include <QPalette>
++#include <QStandardPaths>
++
++#import <AppKit/AppKit.h>
++
++namespace
++{
++QColor toQColor(NSColor *color)
++{
++    NSColor *rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
++    return QColor::fromRgbF(rgb.redComponent, rgb.greenComponent, rgb.blueComponent, rgb.alphaComponent);
++}
++
++struct SystemColors {
++    QColor positive, negative, neutral, link, visited, accent, inactive;
++};
++
++SystemColors systemColors()
++{
++    __block SystemColors colors;
++    // resolve the dynamic colors for the appearance the application currently uses
++    [NSApp.effectiveAppearance performAsCurrentDrawingAppearance:^{
++        colors.positive = toQColor(NSColor.systemGreenColor);
++        colors.negative = toQColor(NSColor.systemRedColor);
++        colors.neutral = toQColor(NSColor.systemOrangeColor);
++        colors.link = toQColor(NSColor.linkColor);
++        colors.visited = toQColor(NSColor.systemPurpleColor);
++        colors.accent = toQColor(NSColor.controlAccentColor);
++        colors.inactive = toQColor(NSColor.secondaryLabelColor);
++    }];
++    return colors;
++}
++}
++
++QColor Kleo::MacSystemColors::textBackground()
++{
++    __block QColor color;
++    [NSApp.effectiveAppearance performAsCurrentDrawingAppearance:^{
++        color = toQColor(NSColor.textBackgroundColor);
++    }];
++    return color;
++}
++
++void Kleo::MacSystemColors::applyToKColorScheme(const QPalette &palette)
++{
++    if (!NSApp) {
++        return;
++    }
++    const SystemColors system = systemColors();
++
++    struct ColorSet {
++        const char *group;
++        QPalette::ColorRole background;
++        QPalette::ColorRole alternateBackground;
++        QPalette::ColorRole foreground;
++    };
++    static constexpr ColorSet sets[] = {
++        {"Colors:View", QPalette::Base, QPalette::AlternateBase, QPalette::Text},
++        {"Colors:Window", QPalette::Window, QPalette::Window, QPalette::WindowText},
++        {"Colors:Header", QPalette::Window, QPalette::Window, QPalette::WindowText},
++        {"Colors:Button", QPalette::Button, QPalette::Button, QPalette::ButtonText},
++        {"Colors:Selection", QPalette::Highlight, QPalette::Highlight, QPalette::HighlightedText},
++        {"Colors:Tooltip", QPalette::ToolTipBase, QPalette::ToolTipBase, QPalette::ToolTipText},
++    };
++
++    // one file per distinct set of colors, so KColorScheme's cached config is never stale
++    QString signature;
++    for (const QColor &c : {system.positive, system.negative, system.neutral, system.link, system.accent, palette.color(QPalette::Base), palette.color(QPalette::Text)}) {
++        signature += c.name(QColor::HexArgb);
++    }
++    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/colors");
++    const QString path = QStringLiteral("%1/macos-%2.colors").arg(dir).arg(qHash(signature), 0, 16);
++    if (qApp->property("KDE_COLOR_SCHEME_PATH").toString() == path) {
++        return;
++    }
++    QDir().mkpath(dir);
++
++    KConfig scheme(path, KConfig::SimpleConfig);
++    for (const ColorSet &set : sets) {
++        KConfigGroup group = scheme.group(QLatin1StringView(set.group));
++        group.writeEntry("BackgroundNormal", palette.color(QPalette::Active, set.background));
++        group.writeEntry("BackgroundAlternate", palette.color(QPalette::Active, set.alternateBackground));
++        group.writeEntry("ForegroundNormal", palette.color(QPalette::Active, set.foreground));
++        group.writeEntry("ForegroundInactive", system.inactive);
++        group.writeEntry("ForegroundActive", system.accent);
++        group.writeEntry("ForegroundLink", system.link);
++        group.writeEntry("ForegroundVisited", system.visited);
++        group.writeEntry("ForegroundNegative", system.negative);
++        group.writeEntry("ForegroundNeutral", system.neutral);
++        group.writeEntry("ForegroundPositive", system.positive);
++        group.writeEntry("DecorationFocus", system.accent);
++        group.writeEntry("DecorationHover", system.accent);
++    }
++    scheme.sync();
++
++    // read by KColorScheme's default config (normally set by KColorSchemeManager)
++    qApp->setProperty("KDE_COLOR_SCHEME_PATH", path);
++}
+diff -ruN a/src/view/infofield.cpp b/src/view/infofield.cpp
+--- a/src/view/infofield.cpp	2026-10-28 15:24:57
++++ b/src/view/infofield.cpp	2026-10-28 15:26:15
+@@ -45,6 +45,12 @@
+ #endif
+     mLayout->addWidget(mValue);
+     mButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
++#ifdef Q_OS_MACOS
++    // On macOS a horizontal layout takes its top/bottom margins from the layout item rects of
++    // all its widgets, hidden ones included; the (usually hidden) push button's rect would
++    // add 12px to every field, which shows as large gaps where several fields are hidden.
++    mButton->setAttribute(Qt::WA_LayoutUsesWidgetRect);
++#endif
+     mButton->setVisible(false);
+     mLayout->addWidget(mButton);
+     mLayout->addStretch();
+diff -ruN a/src/view/tabwidget.cpp b/src/view/tabwidget.cpp
+--- a/src/view/tabwidget.cpp	2026-10-28 15:21:53
++++ b/src/view/tabwidget.cpp	2026-10-28 15:27:04
+@@ -482,6 +482,11 @@
+     layout->addWidget(tabWidget);
+ 
+     tabWidget->setMovable(true);
++#ifdef Q_OS_MACOS
++    // plain tab bar above the list instead of a framed tab pane, like Safari or Terminal
++    tabWidget->setDocumentMode(true);
++    tabWidget->tabBar()->setExpanding(true);
++#endif
+ 
+     tabWidget->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
+ 
