@@ -1,668 +1,258 @@
-# Documentation: https://docs.brew.sh/Formula-Cookbook
-#                https://rubydoc.brew.sh/Formula
+# typed: strict
+# frozen_string_literal: true
 
 class Kleopatra < Formula
   desc "Certificate manager and GUI for OpenPGP and CMS cryptography"
-  homepage "https://invent.kde.org/pim/kleopatra"
-  url "https://github.com/KDE/kleopatra/archive/refs/tags/v22.07.80.tar.gz"
-  sha256 "92642a820fe8ca17b8ba29f8c8e72023765a075422fb37eef82d85bf67729a25"
-  license all_of: ["GPL-2.0-only", "GPL-3.0-only", "LGPL-2.1-only", "LGPL-3.0-only"]
-  revision 1
-  keg_only "not linked to prevent conflicts with any gpgme or kde libs"
+  homepage "https://apps.kde.org/kleopatra/"
+  url "https://download.kde.org/stable/release-service/26.08.2/src/kleopatra-26.08.2.tar.xz"
+  sha256 "b3482904c09bac5394b27432c1f91b66860e9fabb33b48302c24086d76726c5d"
+  license all_of: ["GPL-2.0-or-later", "LGPL-2.0-or-later"]
 
+  keg_only "it ships private copies of the KDE Frameworks it needs"
+
+  depends_on "bison" => :build
   depends_on "boost" => :build
   depends_on "cmake" => :build
   depends_on "extra-cmake-modules" => :build
-  depends_on "iso-codes" => :build
-  depends_on "pkg-config" => :build
-  depends_on "python3" => :build
-
-  depends_on "dbus"
-  depends_on "docbook-xsl"
+  depends_on "ninja" => :build
+  depends_on "pkgconf" => :build
   depends_on "gettext"
   depends_on "gnupg"
+  depends_on "gpgmepp"
+  depends_on "karchive"
+  depends_on "ki18n"
   depends_on "libassuan"
   depends_on "libgpg-error"
-  depends_on "qt@5"
-  depends_on "xz"
-  depends_on "zstd"
-
-  uses_from_macos "zip"
-
-  resource "extra-cmake-modules" do
-    url "https://github.com/KDE/extra-cmake-modules/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "df438ac68dfed744c8f0b27dd0e0f4a2df0cf0050c99d4b41a060366fd1e6087"
+  depends_on "libical"
+  depends_on :macos
+  depends_on "pinentry-mac"
+  depends_on "qtbase"
+  depends_on "qtsvg"
+  # Libraries Kleopatra needs that Homebrew does not provide, in build order
+  resource "qgpgme" do
+    url "https://www.gnupg.org/ftp/gcrypt/qgpgme/qgpgme-2.2.0.tar.xz"
+    sha256 "3c6290ff5bfeab981bb48b2951703761f1dbea640cb637beb3560d5fefb0e0b3"
   end
 
-  # GPGME 1.17 requires libassuan API 2; Homebrew's libassuan uses API 3.
-  resource "libassuan" do
-    url "https://www.gnupg.org/ftp/gcrypt/libassuan/libassuan-2.5.7.tar.bz2"
-    sha256 "0103081ffc27838a2e50479153ca105e873d3d65d8a9593282e9c94c7e6afb76"
-  end
-
-  # GPGME, GpgME++ and QGpgME
-  resource "gpgme" do
-    url "https://www.gnupg.org/ftp/gcrypt/gpgme/gpgme-1.17.1.tar.bz2"
-    sha256 "711eabf5dd661b9b04be9edc9ace2a7bc031f6bd9d37a768d02d0efdef108f5f"
-  end
-
-  # knotifications depends on it
-  resource "phonon" do
-    url "https://github.com/KDE/phonon/archive/refs/tags/v4.11.1.tar.gz"
-    sha256 "94e782d1499a7b264122cf09aa559d6245b869d4c33462d82dd1eb294c132e1b"
-  end
-
-  # ktextwidgets depends on it
-  resource "sonnet" do
-    url "https://github.com/KDE/sonnet/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "df94279e92c8b5069a5524e00fa236cc6d66e7a356d25bbc266808a6770518f2"
-  end
-
-  # KF5 libraries
-  resource "karchive" do
-    url "https://github.com/KDE/karchive/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "5870cee093d2e079009f9c88a36eb59bc9880b57623232ccaa49ef3ae1a0d405"
+  resource "kdsingleapplication" do
+    url "https://github.com/KDAB/KDSingleApplication/releases/download/v1.2.1/kdsingleapplication-1.2.1.tar.gz"
+    sha256 "e3254ce9dc5ecf6d61ef83264bc61d486a307f0e3c9ed1bb2176f068cdbcbe09"
   end
 
   resource "kcoreaddons" do
-    url "https://github.com/KDE/kcoreaddons/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "912ac4cd9684827d06900457987dc6b98836291fdb6753ce797ab950b845445a"
-  end
-
-  resource "kauth" do
-    url "https://github.com/KDE/kauth/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "dfa93902fe8992dabc80267d081610402dbdae7baae35b174e74700b65103681"
-  end
-
-  resource "kcodecs" do
-    url "https://github.com/KDE/kcodecs/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "85ed0bfca75a8e33311dc51ab752a502f5904e5250402c20c4f95728749fc300"
+    url "https://download.kde.org/stable/frameworks/6.31/kcoreaddons-6.31.0.tar.xz"
+    sha256 "d3a843249177a6e51714a7211c73829cb071dbebe4f30404423bbbc57ca5ee95"
   end
 
   resource "kconfig" do
-    url "https://github.com/KDE/kconfig/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "ae2bd8facc531fa9a508204dfdb337f53b7ecc42bb944147dd0cff8da8e2c0ff"
+    url "https://download.kde.org/stable/frameworks/6.31/kconfig-6.31.0.tar.xz"
+    sha256 "5572e3e098f7cf5d06c78cd941924333c0e84646d2a18aa6b4c9a6f7eae8a5c9"
   end
 
   resource "kwidgetsaddons" do
-    url "https://github.com/KDE/kwidgetsaddons/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "42d26175e1956d3dc2d82ef50f4a3d790b51fb546e7cfa90cb1cf8c7373e01ae"
+    url "https://download.kde.org/stable/frameworks/6.31/kwidgetsaddons-6.31.0.tar.xz"
+    sha256 "94d1a1ba334a383c38b7f4238d93895ddd2b40f3d6511b16937bc951b542b5a5"
   end
 
-  resource "kcompletion" do
-    url "https://github.com/KDE/kcompletion/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "560825a476c12b19a1427ecc071b2b3d6d798ea363e45d5f2fb73941da2a5cf6"
+  resource "kcodecs" do
+    url "https://download.kde.org/stable/frameworks/6.31/kcodecs-6.31.0.tar.xz"
+    sha256 "2d889f4afd881ae3bc532753c7a2758f45842d4ca828a171d52c8f396128d081"
   end
 
   resource "kguiaddons" do
-    url "https://github.com/KDE/kguiaddons/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "3a77bb3a5e3913d919fe8827962e7bdba61dda98d944c238d389f765f597a14f"
+    url "https://download.kde.org/stable/frameworks/6.31/kguiaddons-6.31.0.tar.xz"
+    sha256 "d440bbe350282b03c828d5987a6db1f0a4f5d87a528907bf19e1e5bb76d4b219"
   end
 
-  resource "ki18n" do
-    url "https://github.com/KDE/ki18n/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "c0c8b5b4986a80037f064a3fbde159c0f15a845423d6a5f0aad3a39bd5cc2b76"
+  resource "kcolorscheme" do
+    url "https://download.kde.org/stable/frameworks/6.31/kcolorscheme-6.31.0.tar.xz"
+    sha256 "41a8b12a4d9f4fdada70e4853879a2f43a7bf43e870a18c6038eebd956a1f863"
   end
 
-  resource "kconfigwidgets" do
-    url "https://github.com/KDE/kconfigwidgets/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "8cec04ede72d7e5f6e927d3631759a4380cc4e356211a4abac50b871ebf8f153"
-  end
-
-  resource "kcrash" do
-    url "https://github.com/KDE/kcrash/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "627a88c6853cdaaf9e1cd976150eba2b460ca26bcf20c4045b197a351bbed555"
-  end
-
-  resource "kwindowsystem" do
-    url "https://github.com/KDE/kwindowsystem/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "066dbba360c9f46ea660ab84cee60207ca6e3edfddc3ecd841f8b4e03f0770d2"
-  end
-
-  resource "kdbusaddons" do
-    url "https://github.com/KDE/kdbusaddons/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "9521b07ca701c3b49b134cc38902fbd4ec13706124bc2a98986f77af2b63e66a"
-  end
-
-  resource "kdoctools" do
-    url "https://github.com/KDE/kdoctools/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "0bc28f51f3e18ee271992034fa30b45ac70df4fc6625afe2a390220c3f1a43ed"
+  resource "kcompletion" do
+    url "https://download.kde.org/stable/frameworks/6.31/kcompletion-6.31.0.tar.xz"
+    sha256 "b9b0023059c09fadfd9aa5d6cf40b3fb0a72d9b45e73b2146c29c20dfab35689"
   end
 
   resource "kitemviews" do
-    url "https://github.com/KDE/kitemviews/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "d450ba84b72647c9bbc2e438bb4ca100550d8558d1b15eaf471741e7fa4f529b"
-  end
-
-  resource "kiconthemes" do
-    url "https://github.com/KDE/kiconthemes/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "6c198b5bafbb7cbd4ca2204bb09ad39433e30697cda1fce7c848e21471d6d18c"
+    url "https://download.kde.org/stable/frameworks/6.31/kitemviews-6.31.0.tar.xz"
+    sha256 "cf0d9bf175619ed76cda99a20b04d349082a7c0e4bd1b2ce1dcf2631131cabcd"
   end
 
   resource "kitemmodels" do
-    url "https://github.com/KDE/kitemmodels/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "e31d430c8600bc2ab224684f9915d3d6114d65b38aafe945615ab1acfcedd90c"
+    url "https://download.kde.org/stable/frameworks/6.31/kitemmodels-6.31.0.tar.xz"
+    sha256 "bcd5d95bd300c5b8b6400d087bfbf66efec34d3617aef90878e0c90407f6964c"
   end
 
-  resource "kmime" do
-    url "https://github.com/KDE/kmime/archive/refs/tags/v22.07.80.tar.gz"
-    sha256 "0e4d8adfefdb6b8d67d6c13c52e6375ee6754c1d49230c3bc8f66b9f626fef75"
+  resource "kwindowsystem" do
+    url "https://download.kde.org/stable/frameworks/6.31/kwindowsystem-6.31.0.tar.xz"
+    sha256 "9968f66ba750432480960e321dd7ec32e2ea19a1596496f39147797684842f57"
+  end
+
+  resource "kcrash" do
+    url "https://download.kde.org/stable/frameworks/6.31/kcrash-6.31.0.tar.xz"
+    sha256 "8883c740d5de9aea232060f10c7f3bfdc3f83914b2d91d757ce2c8ed535621a6"
+  end
+
+  resource "kdbusaddons" do
+    url "https://download.kde.org/stable/frameworks/6.31/kdbusaddons-6.31.0.tar.xz"
+    sha256 "7110f9f07b6cef50a238b01b23f2adcb23552ea1e91e2a9c84f96c5d94a69036"
+  end
+
+  resource "kconfigwidgets" do
+    url "https://download.kde.org/stable/frameworks/6.31/kconfigwidgets-6.31.0.tar.xz"
+    sha256 "a9aa37565702ac1353c36cf16cc968c8aa336d33bcab9d0ff5419dd0b1dc92df"
+  end
+
+  resource "kservice" do
+    url "https://download.kde.org/stable/frameworks/6.31/kservice-6.31.0.tar.xz"
+    sha256 "a3e6964ca12aae984f3600fb439c1a906ffe8fecc2111fbfa3fb00052d566e23"
   end
 
   resource "knotifications" do
-    url "https://github.com/KDE/knotifications/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "c94a188f81406d2d89091314a9cc8242f9c03d9567f4d6121f75c86feb20a831"
+    url "https://download.kde.org/stable/frameworks/6.31/knotifications-6.31.0.tar.xz"
+    sha256 "34a9a071585bc3e0993ab19c9a9c7dd4813f5a6104b7b0a470e007f258beaf76"
   end
 
-  resource "ktextwidgets" do
-    url "https://github.com/KDE/ktextwidgets/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "1ce7d0974c696f9a3cbb74c5479a2af333ba0bc03889773bd9f718b4b7311e79"
+  resource "kjobwidgets" do
+    url "https://download.kde.org/stable/frameworks/6.31/kjobwidgets-6.31.0.tar.xz"
+    sha256 "b734186ed41e8cc84c2a5f9ba61b46075dacf076450dcb78d37a5d01dcd8c69e"
+  end
+
+  resource "kbookmarks" do
+    url "https://download.kde.org/stable/frameworks/6.31/kbookmarks-6.31.0.tar.xz"
+    sha256 "2d2c53c07fbc813e891bbc95a3ff4828c9e8e348e84a0d94fc2b69adf5897f55"
+  end
+
+  resource "breeze-icons" do
+    url "https://download.kde.org/stable/frameworks/6.31/breeze-icons-6.31.0.tar.xz"
+    sha256 "82ab1c13f782cb37176e7c13c5fb2c77536a65f24b85d09127f3575f917fb56d"
+  end
+
+  resource "kiconthemes" do
+    url "https://download.kde.org/stable/frameworks/6.31/kiconthemes-6.31.0.tar.xz"
+    sha256 "d6558d7dc6ed6de90ef3b5eef905c25fb624147a01d2703329144534a5df58ec"
+  end
+
+  resource "solid" do
+    url "https://download.kde.org/stable/frameworks/6.31/solid-6.31.0.tar.xz"
+    sha256 "82950a3d19a8b3ccac11bbcc297e132b975921e25b386f462abe5727a78f1e35"
   end
 
   resource "kxmlgui" do
-    url "https://github.com/KDE/kxmlgui/archive/refs/tags/v5.96.0.tar.gz"
-    sha256 "3eb924c2033f036d94fb498ab46fbec6a0fa7dee7bfd99d46bb62275e1b7e6a4"
+    url "https://download.kde.org/stable/frameworks/6.31/kxmlgui-6.31.0.tar.xz"
+    sha256 "048c2229a39ec717740a56b4e8b23dc2e68cefa36c4b6ab652104a0dc1a6fbd8"
   end
-  # end of KF5 libs
+
+  resource "kio" do
+    url "https://download.kde.org/stable/frameworks/6.31/kio-6.31.0.tar.xz"
+    sha256 "cdc8e3787be1f4a5c8f8a45fabab5cf540ef6380c549c6fd984f15f093b5eac0"
+  end
+
+  resource "kmime" do
+    url "https://download.kde.org/stable/frameworks/6.31/kmime-6.31.0.tar.xz"
+    sha256 "859a5c233ef0a70af76fe678da3b1d519086de9cd410826342bdf2c02eadcf90"
+  end
+
+  resource "kcalendarcore" do
+    url "https://download.kde.org/stable/frameworks/6.31/kcalendarcore-6.31.0.tar.xz"
+    sha256 "dd09650c406ef60ddb3e3fe55dd4faca819a500175197f88f8f2279ebb4fe16e"
+  end
+
+  resource "kmbox" do
+    url "https://download.kde.org/stable/release-service/26.08.2/src/kmbox-26.08.2.tar.xz"
+    sha256 "a4b08915584d0b7ec5fa28adae1eb3d0bc63a1d95f15e40bfae529505d0307a5"
+  end
 
   resource "libkleo" do
-    url "https://github.com/KDE/libkleo/archive/refs/tags/v22.07.80.tar.gz"
-    sha256 "c70556e7b462dfc120e3af660975dd121e36aa11b7f3082286e0d0a08652b275"
+    url "https://download.kde.org/stable/release-service/26.08.2/src/libkleo-26.08.2.tar.xz"
+    sha256 "70dce52fad62d32a3122542bfb4efa20cd1e0e3de92273bcbaae704f32ed3f32"
+  end
+
+  resource "mimetreeparser" do
+    url "https://download.kde.org/stable/release-service/26.08.2/src/mimetreeparser-26.08.2.tar.xz"
+    sha256 "82b4e37cb59b7264ef13b6e8c18be7d59666f4cbfb51b5ae0f1d7ab6ea35cd09"
+  end
+
+  # macOS integration: native look, menus, dialogs and About panel
+  patch do
+    url "https://raw.githubusercontent.com/giorgiobrullo/homebrew-kleopatra4mac/aa2e6d183126d1a5d6b7ac85c088825893439a24/patches/0001-macos-bundle-info.patch"
+    sha256 "5044ed7fb79e6eeec6e0f59961c9c03a607709320a25d597e5a7c03562c47307"
+  end
+
+  patch do
+    url "https://raw.githubusercontent.com/giorgiobrullo/homebrew-kleopatra4mac/aa2e6d183126d1a5d6b7ac85c088825893439a24/patches/0002-macos-native-look.patch"
+    sha256 "93083ac09e18336f35c4329c3bbfe62cf199e855944474b883102442644344c6"
+  end
+
+  patch do
+    url "https://raw.githubusercontent.com/giorgiobrullo/homebrew-kleopatra4mac/aa2e6d183126d1a5d6b7ac85c088825893439a24/patches/0003-macos-sf-symbols-and-spacing.patch"
+    sha256 "9a79ba4451d1032322b2bf4aa09d4ea8bd9b8cf6cd5ac5a764d51086eb7c8b5d"
+  end
+
+  patch do
+    url "https://raw.githubusercontent.com/giorgiobrullo/homebrew-kleopatra4mac/aa2e6d183126d1a5d6b7ac85c088825893439a24/patches/0004-macos-dialogs.patch"
+    sha256 "de96a8fb3c50d3eb9caf8bf5ab73bab39bb9ca33ede3bcec4c7c6c942fe2bee0"
+  end
+
+  patch do
+    url "https://raw.githubusercontent.com/giorgiobrullo/homebrew-kleopatra4mac/aa2e6d183126d1a5d6b7ac85c088825893439a24/patches/0005-macos-menus-and-about.patch"
+    sha256 "fd47f80a3aab479f3bea1acd146dedce1b5e1b78c2f642822b98c5f792e9834d"
   end
 
   def install
     args = std_cmake_args + %W[
-      -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-      -DQT_MAJOR_VERSION=5
-      -DCMAKE_PREFIX_PATH=#{prefix};#{Formula["qt@5"].opt_prefix}
-      -DECM_DIR=#{share}/ECM/cmake
+      -DCMAKE_PREFIX_PATH=#{prefix};#{HOMEBREW_PREFIX}
+      -DCMAKE_INSTALL_RPATH=#{opt_lib};#{HOMEBREW_PREFIX}/lib
+      -DKDE_INSTALL_BUNDLEDIR=#{prefix}/Applications/KDE
+      -DBUILD_TESTING=OFF
+      -DBUILD_QCH=OFF
+      -DBUILD_PYTHON_BINDINGS=OFF
+      -DBUILD_DESIGNERPLUGIN=OFF
+      -DQT_MAJOR_VERSION=6
     ]
+    extra_args = {
+      "qgpgme"              => %w[-DBUILD_WITH_QT5=OFF -DBUILD_WITH_QT6=ON],
+      "kdsingleapplication" => %w[-DKDSingleApplication_QT6=ON -DKDSingleApplication_EXAMPLES=OFF
+                                  -DKDSingleApplication_TESTS=OFF],
+      "kguiaddons"          => %w[-DWITH_WAYLAND=OFF -DWITH_X11=OFF],
+      "kwindowsystem"       => %w[-DKWINDOWSYSTEM_WAYLAND=OFF -DKWINDOWSYSTEM_X11=OFF],
+      "breeze-icons"        => %w[-DWITH_ICON_GENERATION=OFF -DSKIP_INSTALL_ICONS=ON],
+      "solid"               => %W[-DBISON_EXECUTABLE=#{formula_opt_bin("bison")}/bison
+                                  -DCMAKE_DISABLE_FIND_PACKAGE_IMobileDevice=ON
+                                  -DCMAKE_DISABLE_FIND_PACKAGE_PList=ON],
+      "kio"                 => %w[-DUSE_DBUS=OFF -DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON],
+      "mimetreeparser"      => %w[-DCMAKE_DISABLE_FIND_PACKAGE_Qt6Quick=ON],
+    }
 
-    resource("extra-cmake-modules").stage do
-      system "cmake", ".", *args
-      system "make", "install"
-    end
-
-    resource("libassuan").stage do
-      system "./configure", "--prefix=#{prefix}"
-      system "make", "install"
-    end
-
-    # GPGME, GpgME++ and QGpgME
-    resource("gpgme").stage do
-      system "./configure", "--prefix=#{prefix}", "--with-libassuan-prefix=#{prefix}",
-             "CXXFLAGS=#{ENV["CXXFLAGS"]} -std=c++17",
-             "--disable-gpg-test", "--disable-gpgsm-test", "--disable-g13-test"
-
-      system "make", "install"
-    end
-
-    # KF5 depends on it
-    resource("phonon").stage do
-      system "cmake", ".", *args, "-DPHONON_BUILD_EXPERIMENTAL=OFF"
-
-      # ensure application is installed to the prefix in Cellar
-      inreplace "settings/cmake_install.cmake" do |s|
-        s.gsub!(/\"\/Applications\/KDE\"/, "\"/#{prefix}/Applications/KDE\"")
+    resources.each do |r|
+      r.stage do
+        system "cmake", "-S", ".", "-B", "build", "-G", "Ninja", *args, *extra_args.fetch(r.name, [])
+        system "cmake", "--build", "build"
+        system "cmake", "--install", "build"
       end
-      system "make", "install", "prefix=#{prefix}"
     end
 
-    resource("sonnet").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    # install KF5 libraries
-    resource("karchive").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kcoreaddons").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kauth").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kcodecs").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kconfig").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kwidgetsaddons").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kcompletion").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kguiaddons").stage do
-      system "cmake", ".", *args
-
-      # ensure application is installed to the prefix in Cellar
-      inreplace "src/geo-scheme-handler/cmake_install.cmake" do |s|
-        s.gsub!(/\"\/Applications\/KDE\"/, "\"/#{prefix}/Applications/KDE\"")
-      end
-
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("ki18n").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kconfigwidgets").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kwindowsystem").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kcrash").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kdbusaddons").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kdoctools").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kitemviews").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kiconthemes").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kitemmodels").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kmime").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("knotifications").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("ktextwidgets").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    resource("kxmlgui").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-    # end of KF5 libs
-
-    resource("libkleo").stage do
-      system "cmake", ".", *args
-      system "make", "install", "prefix=#{prefix}"
-    end
-
-    inreplace "src/dialogs/certificatedetailswidget.cpp" do |s|
-      s.gsub!(/ifdef USE_RANGES/, "if 0")
-    end
-
-    inreplace "src/view/padwidget.cpp" do |s|
-      s.gsub!(/QStringLiteral\(\"Monospace\"\)/, "QFontDatabase::systemFont(QFontDatabase::FixedFont)")
-    end
-
-    # shared_ptr::unique was removed in C++20; preserve copy-on-write detachment.
-    inreplace %w[src/crypto/sender.cpp src/crypto/recipient.cpp], "!d.unique()", "d.use_count() != 1"
-
-    iconset = create_iconset(buildpath)
-    modernize_window
-    modernize_ui
-
-    system "cmake", ".", *args
-
-    # ensure application is installed to the prefix in Cellar
-    inreplace "src/cmake_install.cmake" do |s|
-      s.gsub!(/\"\/Applications\/KDE\"/, "\"/#{prefix}/Applications/KDE\"")
-    end
-
-    inreplace "src/kwatchgnupg/cmake_install.cmake" do |s|
-      s.gsub!(/\"\/Applications\/KDE\"/, "\"/#{prefix}/Applications/KDE\"")
-    end
-
-    system "make", "install"
-    install_modern_icon(iconset, prefix/"Applications/KDE/kleopatra.app")
-
-    kleopatra = "#{prefix}/Applications/KDE/kleopatra.app/Contents/MacOS/kleopatra"
-    system "install_name_tool", "-add_rpath", "#{prefix}/lib", kleopatra
-
-    # this fixes loading of libdbus in runtime from qt on apple m1
-    system "install_name_tool", "-add_rpath", "#{HOMEBREW_PREFIX}/lib", kleopatra
-  end
-
-  def create_iconset(directory)
-    iconset = directory/"kleopatra.iconset"
-    iconset.mkpath
-    square = directory/"kleopatra-icon.png"
-    system "/usr/bin/sips", "--resampleHeightWidthMax", "1024", Pathname(__dir__)/"images/icon.png", "--out", square
-    system "/usr/bin/sips", "--padToHeightWidth", "1024", "1024", square
-    [16, 32, 128, 256, 512].each do |size|
-      system "/usr/bin/sips", "-z", size.to_s, size.to_s, square, "--out", iconset/"icon_#{size}x#{size}.png"
-      system "/usr/bin/sips", "-z", (size * 2).to_s, (size * 2).to_s, square,
-             "--out", iconset/"icon_#{size}x#{size}@2x.png"
-    end
-    iconset
-  end
-
-  def install_modern_icon(iconset, bundle)
-    resources = bundle/"Contents/Resources"
-    resources.mkpath
-    system "/usr/bin/iconutil", "-c", "icns", "-o", resources/"kleopatra.icns", iconset
-    resources.install iconset.parent/"kleopatra-icon.png" => "kleopatra.png"
-    system "/usr/libexec/PlistBuddy", "-c", "Set :CFBundleIconFile kleopatra.icns", bundle/"Contents/Info.plist"
-  end
-
-  def modernize_window
-    # Objective-C++ uses the Cocoa SDK's enum values and structure-return ABI on
-    # both Intel and Apple Silicon, without objc_msgSend casts in Qt's C++ files.
-    Pathname("src/macvibrancy.mm").write <<~CPP
-      #import <AppKit/AppKit.h>
-      #import <objc/runtime.h>
-      #include <QtGui/qwindowdefs.h>
-
-      void applyMacVibrancy(WId windowId)
-      {
-          NSView *view = reinterpret_cast<NSView *>(windowId);
-          NSWindow *window = view.window;
-          NSView *container = view.superview;
-          if (!window || !container) {
-              return;
-          }
-          window.opaque = NO;
-          window.backgroundColor = NSColor.clearColor;
-          static char effectKey;
-          if (objc_getAssociatedObject(view, &effectKey)) {
-              return;
-          }
-          NSVisualEffectView *effect = [[NSVisualEffectView alloc] initWithFrame:view.frame];
-          effect.material = NSVisualEffectMaterialUnderWindowBackground;
-          effect.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-          effect.state = NSVisualEffectStateFollowsWindowActiveState;
-          effect.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
-          effect.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-          // QWidget children share Qt's native view, so the material must be a
-          // sibling below that view rather than an overlay inside it.
-          [container addSubview:effect positioned:NSWindowBelow relativeTo:view];
-          objc_setAssociatedObject(view, &effectKey, effect, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-          [effect release];
-      }
-    CPP
-
-    inreplace "src/mainwindow.cpp", '#include "mainwindow.h"', <<~CPP.chomp
-      #include "mainwindow.h"
-      #ifdef Q_OS_MACOS
-      void applyMacVibrancy(WId windowId);
-      #endif
-    CPP
-    inreplace "src/mainwindow.cpp", ": KXmlGuiWindow(parent, flags), d(new Private(this))\n{}", <<~CPP.chomp
-      : KXmlGuiWindow(parent, flags), d(new Private(this))
-      {
-      #ifdef Q_OS_MACOS
-          setAttribute(Qt::WA_TranslucentBackground, true);
-          centralWidget()->setAutoFillBackground(false);
-      #endif
-      }
-    CPP
-    inreplace "src/mainwindow.cpp", "    KXmlGuiWindow::showEvent(e);", <<~CPP.chomp
-          KXmlGuiWindow::showEvent(e);
-      #ifdef Q_OS_MACOS
-          applyMacVibrancy(winId());
-      #endif
-    CPP
-    inreplace "src/CMakeLists.txt",
-              "add_executable(kleopatra_bin ${_kleopatra_SRCS} ${_kleopatra_uiserver_SRCS})", <<~CMAKE.chomp
-      if (APPLE)
-        enable_language(OBJCXX)
-        list(APPEND _kleopatra_SRCS macvibrancy.mm)
-      endif()
-      add_executable(kleopatra_bin ${_kleopatra_SRCS} ${_kleopatra_uiserver_SRCS})
-      if (APPLE)
-        target_link_libraries(kleopatra_bin "-framework AppKit")
-      endif()
-    CMAKE
-  end
-
-  def modernize_ui
-    inreplace "src/main.cpp", "#include <QAccessible>", <<~CPP
-      #include <QAccessible>
-      #include <QStyleFactory>
-      #include <QPalette>
-      #include <QColor>
-      #include <QIcon>
-    CPP
-
-    inreplace "src/main.cpp", "KAboutData::setApplicationData(aboutData);", <<~CPP.chomp
-      KAboutData::setApplicationData(aboutData);
-      app.setWindowIcon(QIcon(QCoreApplication::applicationDirPath()
-                             + QStringLiteral("/../Resources/kleopatra.png")));
-    CPP
-
-    inreplace "src/main.cpp", "KleopatraApplication app(argc, argv);", <<~CPP.chomp
-      KleopatraApplication app(argc, argv);
-      app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
-
-      QPalette breezeDark = app.palette();
-      breezeDark.setColor(QPalette::Window, QColor(35, 38, 41));
-      breezeDark.setColor(QPalette::WindowText, QColor(239, 240, 241));
-      breezeDark.setColor(QPalette::Base, QColor(27, 30, 32));
-      breezeDark.setColor(QPalette::AlternateBase, QColor(42, 46, 50));
-      breezeDark.setColor(QPalette::ToolTipBase, QColor(35, 38, 41));
-      breezeDark.setColor(QPalette::ToolTipText, QColor(239, 240, 241));
-      breezeDark.setColor(QPalette::Text, QColor(239, 240, 241));
-      breezeDark.setColor(QPalette::Button, QColor(49, 54, 59));
-      breezeDark.setColor(QPalette::ButtonText, QColor(239, 240, 241));
-      breezeDark.setColor(QPalette::BrightText, QColor(255, 255, 255));
-      breezeDark.setColor(QPalette::Link, QColor(61, 174, 233));
-      breezeDark.setColor(QPalette::LinkVisited, QColor(155, 89, 182));
-      breezeDark.setColor(QPalette::Highlight, QColor(61, 174, 233));
-      breezeDark.setColor(QPalette::HighlightedText, QColor(255, 255, 255));
-      breezeDark.setColor(QPalette::Light, QColor(71, 77, 83));
-      breezeDark.setColor(QPalette::Midlight, QColor(59, 66, 73));
-      breezeDark.setColor(QPalette::Mid, QColor(49, 54, 59));
-      breezeDark.setColor(QPalette::Dark, QColor(27, 30, 32));
-      breezeDark.setColor(QPalette::Shadow, QColor(20, 23, 25));
-      breezeDark.setColor(QPalette::Disabled, QPalette::Text, QColor(122, 127, 131));
-      breezeDark.setColor(QPalette::Disabled, QPalette::WindowText, QColor(122, 127, 131));
-      breezeDark.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(122, 127, 131));
-      breezeDark.setColor(QPalette::Disabled, QPalette::Highlight, QColor(70, 75, 80));
-      breezeDark.setColor(QPalette::Disabled, QPalette::HighlightedText, QColor(122, 127, 131));
-      app.setPalette(breezeDark);
-
-      app.setStyleSheet(QStringLiteral(R"QSS(
-          QMainWindow { background-color: rgba(35, 38, 41, 224); }
-          QMenuBar {
-              background-color: #232629;
-              color: #eff0f1;
-              border-bottom: 1px solid #3a3f44;
-              padding: 2px;
-          }
-          QMenuBar::item { background: transparent; padding: 4px 8px; border-radius: 4px; }
-          QMenuBar::item:selected { background-color: #3daee9; color: #ffffff; }
-          QMenuBar::item:disabled { color: #7a7f83; }
-          QMenu {
-              background-color: #232629;
-              color: #eff0f1;
-              border: 1px solid #3a3f44;
-              border-radius: 6px;
-              padding: 4px;
-          }
-          QMenu::item { padding: 6px 24px 6px 12px; border-radius: 4px; }
-          QMenu::item:selected { background-color: #3daee9; color: #ffffff; }
-          QMenu::item:disabled { color: #7a7f83; }
-          QMenu::separator { height: 1px; background-color: #3a3f44; margin: 4px 8px; }
-          QStatusBar { background-color: #232629; color: #a5b0b7; border-top: 1px solid #3a3f44; }
-          QToolTip {
-              background-color: #232629;
-              color: #eff0f1;
-              border: 1px solid #3daee9;
-              padding: 5px 8px;
-              border-radius: 4px;
-          }
-
-          QToolBar { background-color: rgba(35, 38, 41, 217); border-bottom: 1px solid #3a3f44; spacing: 6px; padding: 4px; }
-          QToolButton { background: transparent; color: #eff0f1; border: 1px solid transparent; border-radius: 5px; padding: 6px 10px; }
-          QToolButton:hover { background-color: rgba(61, 174, 233, 46); border-color: #3daee9; }
-          QToolButton:pressed, QToolButton:checked { background-color: rgba(61, 174, 233, 89); border-color: #3daee9; }
-          QToolButton:disabled { background: transparent; color: #7a7f83; border-color: transparent; }
-
-          QTreeView, QTableView {
-              background-color: rgba(27, 30, 32, 209);
-              alternate-background-color: rgba(35, 38, 41, 209);
-              color: #eff0f1;
-              border: 1px solid #3a3f44;
-              border-radius: 6px;
-              gridline-color: #31363b;
-              selection-background-color: #3daee9;
-              selection-color: #ffffff;
-          }
-          QTreeView::item, QTableView::item { padding: 5px; }
-          QTreeView::item:hover:!selected, QTableView::item:hover:!selected { background-color: rgba(61, 174, 233, 38); }
-          QTreeView::item:selected, QTableView::item:selected { background-color: #2980b9; color: #ffffff; }
-          QTreeView:disabled, QTableView:disabled { color: #7a7f83; }
-
-          QHeaderView::section {
-              background-color: #232629;
-              color: #a5b0b7;
-              font-weight: bold;
-              padding: 6px 8px;
-              border: none;
-              border-right: 1px solid #3a3f44;
-              border-bottom: 2px solid #3daee9;
-          }
-          QTableCornerButton::section { background-color: #232629; border: 1px solid #3a3f44; }
-
-          QTabWidget::pane { border: 1px solid #3a3f44; background-color: rgba(35, 38, 41, 230); border-radius: 6px; top: -1px; }
-          QTabBar::tab { background-color: #232629; color: #a5b0b7; padding: 8px 18px; border: 1px solid #3a3f44; border-bottom: none; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px; }
-          QTabBar::tab:selected { background-color: rgba(35, 38, 41, 230); color: #3daee9; border-bottom: 2px solid #3daee9; font-weight: bold; }
-          QTabBar::tab:hover:!selected { background-color: #2a2e32; color: #eff0f1; }
-          QTabBar::tab:disabled { color: #7a7f83; }
-
-          QPushButton { background-color: #31363b; color: #eff0f1; border: 1px solid #474d53; border-radius: 5px; padding: 6px 18px; }
-          QPushButton:hover { background-color: #3b4249; border-color: #3daee9; color: #ffffff; }
-          QPushButton:pressed { background-color: #25292c; border-color: #1d74a4; }
-          QPushButton:default, QPushButton:focus { border-color: #3daee9; }
-          QPushButton:disabled { background-color: #232629; color: #7a7f83; border-color: #31363b; }
-
-          QLineEdit { background-color: #1b1e20; color: #eff0f1; border: 1px solid #474d53; border-radius: 5px; padding: 6px 10px; selection-background-color: #3daee9; selection-color: #ffffff; }
-          QLineEdit:focus { border-color: #3daee9; background-color: #232629; }
-          QLineEdit:disabled { color: #7a7f83; }
-
-          QTextEdit, QPlainTextEdit { background-color: #1b1e20; color: #eff0f1; border: 1px solid #3a3f44; border-radius: 6px; padding: 8px; selection-background-color: #3daee9; selection-color: #ffffff; }
-          QTextEdit:focus, QPlainTextEdit:focus { border-color: #3daee9; }
-          QTextEdit:disabled, QPlainTextEdit:disabled { color: #7a7f83; }
-
-          QScrollBar:vertical { background: transparent; width: 10px; margin: 0px; }
-          QScrollBar:horizontal { background: transparent; height: 10px; margin: 0px; }
-          QScrollBar::handle:vertical { background-color: rgba(255, 255, 255, 56); min-height: 24px; border-radius: 5px; }
-          QScrollBar::handle:horizontal { background-color: rgba(255, 255, 255, 56); min-width: 24px; border-radius: 5px; }
-          QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background-color: #3daee9; }
-          QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
-          QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; }
-          QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
-      )QSS"));
-    CPP
-  end
-
-  test do
-    ENV["QT_QPA_PLATFORM"] = "offscreen"
-    resources = prefix/"Applications/KDE/kleopatra.app/Contents/Resources"
-    assert_equal "icns", File.binread(resources/"kleopatra.icns", 4)
-    assert_path_exists resources/"kleopatra.png"
-    k = "#{prefix}/Applications/KDE/kleopatra.app/Contents/MacOS/kleopatra"
-    (testpath/"session.conf").write <<~XML
-      <busconfig>
-        <type>session</type>
-        <listen>unix:tmpdir=#{testpath}</listen>
-        <auth>EXTERNAL</auth>
-        <policy context="default">
-          <allow send_destination="*" eavesdrop="true"/>
-          <allow eavesdrop="true"/>
-          <allow own="*"/>
-        </policy>
-      </busconfig>
-    XML
-    system formula_opt_bin("dbus")/"dbus-run-session", "--config-file=#{testpath}/session.conf", "--", k, "--help"
+    system "cmake", "-S", ".", "-B", "build", "-G", "Ninja", *args, "-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON"
+    system "cmake", "--build", "build"
+    system "cmake", "--install", "build"
   end
 
   def caveats
     <<~EOS
-      After Installing:
+      To start Kleopatra from Launchpad, Spotlight or the Dock, link it into /Applications:
+        ln -sfn #{opt_prefix}/Applications/KDE/kleopatra.app /Applications/Kleopatra.app
 
-      Make sure dbus is running
-        brew services start dbus
-
-      Select pinentry-mac as the default program
-        brew install pinentry-mac
-        echo "pinentry-program #{HOMEBREW_PREFIX}/bin/pinentry-mac" > ~/.gnupg/gpg-agent.conf
-        killall -9 gpg-agent
-
-      There is a clean PATH method below to run 'kleopatra',
-      but it is also ok to create a quick symlink using
-        ln -s #{opt_prefix}/bin/kleopatra #{HOMEBREW_PREFIX}/bin/
-
-      If you want to add this application to the Launchpad
-        cd /Applications && unzip #{opt_prefix}/app.zip
-
+      To enter passphrases in a native macOS dialog, select pinentry-mac in GnuPG:
+        echo "pinentry-program #{formula_opt_bin("pinentry-mac")}/pinentry-mac" >> ~/.gnupg/gpg-agent.conf
+        gpgconf --kill gpg-agent
     EOS
   end
 
-  def post_install
-    zip = "#{opt_prefix}/zip/kleopatra.app"
-    src = "#{opt_prefix}/Applications/KDE/kleopatra.app"
-
-    chdir src do
-      system "sh", "-c", "find . | while read a; do if [ -d $a ]; then
-        mkdir -p #{zip}/$a; else cp #{src}/$a #{zip}/$a; fi; done"
-    end
-
-    system "chmod", "+w", "#{zip}/Contents/MacOS/kleopatra"
-    File.write "#{zip}/Contents/MacOS/kleopatra", <<~EOS
-      #!/bin/sh
-      PATH=#{HOMEBREW_PREFIX}/bin:$PATH exec #{src}/Contents/MacOS/kleopatra
-    EOS
-
-    chdir "#{opt_prefix}/zip" do
-      system "zip", "-r", "#{opt_prefix}/app.zip", "."
-    end
-
-    system "ln", "-sf", "#{src}/Contents/MacOS/kleopatra",
-      "#{opt_prefix}/bin/kleopatra"
+  test do
+    app = prefix/"Applications/KDE/kleopatra.app/Contents/MacOS/kleopatra"
+    assert_predicate app, :executable?
+    ENV["QT_QPA_PLATFORM"] = "offscreen"
+    assert_match version.to_s, shell_output("#{app} --version")
   end
 end
